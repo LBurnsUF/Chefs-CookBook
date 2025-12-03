@@ -29,7 +29,9 @@ namespace CookBook
             RecipeProvider.OnRecipesBuilt += OnRecipesBuilt; // subscribe to recipe completion event
             RecipeProvider.Init(Log); // Parse all chef recipe rules
 
+            TierManager.Init(Log); 
             TierManager.OnTierOrderChanged += OnTierOrderChanged; // subscribe to sort order update events
+
             // TODO: Initialize settings UI via SettingsUI.cs
 
             ChefStateController.Init(Log); // Initialize chef/state logic

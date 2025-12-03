@@ -12,7 +12,11 @@ namespace CookBook
         // Raised on tier order change
         internal static event System.Action OnTierOrderChanged;
 
-        private static readonly HashSet<ItemTier> _seenTiers = new HashSet<ItemTier>(DefaultOrder);
+        private static bool _initialized;
+        private static ManualLogSource _log;
+
+        private static Dictionary<ItemTier, int> _orderMap = new Dictionary<ItemTier, int>();
+        private static readonly HashSet<ItemTier> _seenTiers = new HashSet<ItemTier>();
 
         // Default sorting order
         private static readonly ItemTier[] DefaultOrder =
@@ -29,7 +33,22 @@ namespace CookBook
             ItemTier.NoTier
         };
 
-        private static Dictionary<ItemTier, int> _orderMap = BuildMapFrom(DefaultOrder);
+        internal static void Init(ManualLogSource log)
+        {
+            if (_initialized)
+                return;
+
+            _initialized = true;
+            _log = log;
+
+            log.LogInfo("TierManager.Init()");
+        }
+
+        static TierManager()
+        {
+            _seenTiers = new HashSet<ItemTier>(DefaultOrder);
+            _orderMap = BuildMapFrom(DefaultOrder);
+        }
 
         private static Dictionary<ItemTier, int> BuildMapFrom(ItemTier[] arr)
         {

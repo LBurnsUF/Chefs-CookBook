@@ -67,7 +67,7 @@ namespace CookBook
             _log.LogInfo($"ChefStateController: RebuildAllPlans() Finished building Recipe Index.");
             _log.LogInfo($"ChefStateController: RebuildAllPlans() Building Plans.");
             BuildPlans();
-            _log.LogInfo($"ChefStateController: RebuildAllPlans() Finished building Plans.");
+            _log.LogInfo($"ChefStateController: RebuildAllPlans() Finished building Plans."); // add debug info for # of plans
         }
 
         /// <summary>
@@ -127,6 +127,7 @@ namespace CookBook
             result.Sort(TierManager.CompareCraftableEntries);
 
             // DumpCraftables(result);
+            _log.LogDebug($"ChefStateController: ComputeCraftable -> {result.Count} entries from " + $"{itemStacks.Length} items / {equipmentStacks.Length} equipment.");
             return result;
         }
 

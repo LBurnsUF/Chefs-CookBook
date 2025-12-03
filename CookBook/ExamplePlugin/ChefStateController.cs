@@ -89,7 +89,6 @@ namespace CookBook
             }
 
             _lastCraftables = _planner.ComputeCraftable(itemStacks, equipmentStacks);
-            _log.LogDebug($"ChefStateController: ComputeCraftable -> {_lastCraftables.Count} entries from " + $"{itemStacks.Length} items / {equipmentStacks.Length} equipment.");
 
             OnCraftablesUpdated?.Invoke(_lastCraftables); // notify listeners that new craftables is built using invoke
         }
