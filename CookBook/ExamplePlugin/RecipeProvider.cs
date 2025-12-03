@@ -27,7 +27,6 @@ namespace CookBook
         // fired when recipes are ready to prompt planner build 
         internal static event System.Action<IReadOnlyList<ChefRecipe>> OnRecipesBuilt;
 
-
         /// <summary>
         /// Called once from CookBook.Awake().
         /// </summary>
@@ -44,18 +43,17 @@ namespace CookBook
         }
 
         //--------------------------- ContentPack Tracking -------------------------------
-        private static void OnContentPacksAssigned(HG.ReadOnlyArray<ReadOnlyContentPack> _)
+        internal static void OnContentPacksAssigned(HG.ReadOnlyArray<ReadOnlyContentPack> _)
         {
             if (_recipesBuilt)
                 return;
 
-            ItemCatalog.availability.CallWhenAvailable(() =>
+            CraftableCatalog.availability.CallWhenAvailable(() =>
             {
                 if (_recipesBuilt)
                     return;
 
                 BuildRecipes();
-                ContentManager.onContentPacksAssigned -= OnContentPacksAssigned;
             });
         }
 
@@ -66,244 +64,128 @@ namespace CookBook
         private static void BuildRecipes()
         {
             _recipes.Clear(); // initialize
+            
+            _log.LogInfo("RecipeProvider: Content packs assigned, building recipes from CraftableCatalog");
 
-            _log.LogInfo("RecipeProvider: Content packs assigned, building recipes from CraftableDef via reflection");
-
-            // Find the CraftableDef type in ANY loaded assembly
-            Type craftableDefType = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("RoR2.CraftableDef", throwOnError: false))
-                .FirstOrDefault(t => t != null);
-
-            if (craftableDefType == null)
+            // fill in, no reflection logic anymore
+            var recipesArray = CraftableCatalog.GetAllRecipes();
+            if (recipesArray == null || recipesArray.Length == 0)
             {
-                _log.LogError("RecipeProvider: could not find RoR2.CraftableDef type in loaded assemblies.");
+                _log.LogWarning("RecipeProvider: no recipes returned from CraftableCatalog.GetAllRecipes().");
                 return;
             }
 
-            const BindingFlags FLAGS = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            int skippedNoPickupDef = 0;
+            int skippedNonItemEquip = 0;
+            int skippedEmptyIngList = 0;
 
-            // get all CraftableDef instances via Resources.FindObjectsOfTypeAll(Type)
-            UnityEngine.Object[] craftableObjects = Resources.FindObjectsOfTypeAll(craftableDefType);
-            if (craftableObjects == null || craftableObjects.Length == 0)
+            foreach (var recipeEntry in recipesArray)
             {
-                _log.LogWarning("RecipeProvider: no CraftableDef instances found.");
-                return;
-            }
-            else
-            {
-                _log.LogInfo($"RecipeProvider: found {craftableObjects.Length} CraftableDef instances via Resources.");
-            }
-
-            FieldInfo pickupField = craftableDefType.GetField("pickup", FLAGS);
-            FieldInfo recipesField = craftableDefType.GetField("recipes", FLAGS);
-
-            if (pickupField == null || recipesField == null)
-            {
-                _log.LogError("RecipeProvider: CraftableDef is missing 'pickup' or 'recipes' fields");
-                return;
-            }
-
-            foreach (var craftableObj in craftableObjects)
-            {
-                if (craftableObj == null)
+                if (recipeEntry == null)
                 {
                     continue;
                 }
 
-                object craftable = craftableObj;
-
-                // Result pickup (item or equipment)
-                var resultPickupObj = pickupField.GetValue(craftable) as UnityEngine.Object;
-                if (resultPickupObj == null)
+                // ---------------- Result pickup ----------------
+                PickupIndex resultPickup = recipeEntry.result;
+                if (!resultPickup.isValid || resultPickup == PickupIndex.none)
                 {
-                    _log.LogDebug("RecipeProvider: resultPickupObj is null");
                     continue;
                 }
 
-                // ---------------- Result parse (item/equipment) ----------------
+                PickupDef resultPickupDef = PickupCatalog.GetPickupDef(resultPickup);
+                if (resultPickupDef == null)
+                {
+                    skippedNoPickupDef++;
+                    continue;
+                }
+
                 RecipeResultKind resultKind;
                 ItemIndex resultItemidx = ItemIndex.None;
                 EquipmentIndex resultEquipmentidx = EquipmentIndex.None;
 
-                if (resultPickupObj is ItemDef resultItemDef)
+                if (resultPickupDef.itemIndex != ItemIndex.None)
                 {
                     resultKind = RecipeResultKind.Item;
-                    resultItemidx = ResolveItemIndex(resultItemDef);
-
-                    if (resultItemidx == ItemIndex.None)
-                    {
-                        _log.LogDebug($"RecipeProvider: result ItemDef '{resultItemDef.name}' has no ItemIndex – skipping.");
-                        continue;
-                    }
-
-                    _log.LogDebug($"RecipeProvider: craftable '{craftableObj.name}' ItemDef name={resultItemDef.name}, " + $"resolvedIndex={resultItemidx}");
+                    resultItemidx = resultPickupDef.itemIndex;
                 }
-                else if (resultPickupObj is EquipmentDef resultEqDef)
+                else if (resultPickupDef.equipmentIndex != EquipmentIndex.None)
                 {
                     resultKind = RecipeResultKind.Equipment;
-                    resultEquipmentidx = ResolveEquipmentIndex(resultEqDef);
-
-                    if (resultEquipmentidx == EquipmentIndex.None)
-                    {
-                        _log.LogDebug($"RecipeProvider: result EquipmentDef '{resultEqDef.name}' has no EquipmentIndex – skipping.");
-                        continue;
-                    }
-
-                    _log.LogDebug($"RecipeProvider: craftable '{craftableObj.name}' EquipmentDef name={resultEqDef.name}, " + $"resolvedIndex={resultEquipmentidx}");
+                    resultEquipmentidx = resultPickupDef.equipmentIndex;
                 }
                 else
                 {
-                    _log.LogDebug($"RecipeProvider: craftable '{craftableObj.name}' pickup type {resultPickupObj.GetType().FullName} unsupported – skipping.");
+                    // Not an item/equipment pickup
+                    skippedNonItemEquip++;
                     continue;
                 }
 
-                // build recipes array
-                var recipesArray = recipesField.GetValue(craftable) as Array;
-                if (recipesArray == null || recipesArray.Length == 0)
+                int resultCount = recipeEntry.amountToDrop;
+
+                // ---------------- Ingredient pickups ----------------
+                List<PickupIndex> ingredientPickups = recipeEntry.GetAllPickups();
+                if (ingredientPickups == null || ingredientPickups.Count == 0)
                 {
-                    _log.LogDebug("RecipeProvider: recipesArray is null or empty");
+                    skippedEmptyIngList++;
                     continue;
                 }
 
-                foreach (var recipeObj in recipesArray)
+                var ingList = new List<Ingredient>();
+
+                foreach (var ingPi in ingredientPickups)
                 {
-                    if (recipeObj == null)
+                    if (!ingPi.isValid || ingPi == PickupIndex.none)
                     {
                         continue;
                     }
 
-                    // attempt to fill in recipe data from binary
-                    Type recipeType = recipeObj.GetType();
-                    FieldInfo amountField = recipeType.GetField("amountToDrop", FLAGS);
-                    FieldInfo ingredientsField = recipeType.GetField("ingredients", FLAGS);
-
-                    if (amountField == null || ingredientsField == null)
+                    PickupDef ingDef = PickupCatalog.GetPickupDef(ingPi);
+                    if (ingDef == null)
                     {
-                        _log.LogDebug($"RecipeProvider: recipe type '{recipeType.FullName}' missing amountToDrop/ingredients – skipping.");
                         continue;
                     }
 
-                    int resultCount = (int)amountField.GetValue(recipeObj);
-                    var ingredientsArray = ingredientsField.GetValue(recipeObj) as Array;
-                    if (ingredientsArray == null || ingredientsArray.Length == 0)
+                    // ---------------- Result parse (item/equipment) ----------------
+                    if (ingDef.itemIndex != ItemIndex.None)
                     {
-                        _log.LogDebug("RecipeProvider: ingredientsArray is null or empty");
-                        continue;
-                    }
-
-                    var ingList = new List<Ingredient>();
-
-                    foreach (var ingObj in ingredientsArray)
-                    {
-                        if (ingObj == null)
-                        {
-                            continue;
-                        }
-
-                        Type ingType = ingObj.GetType();
-                        FieldInfo ingPickupField = ingType.GetField("pickup", FLAGS);
-
-                        if (ingPickupField == null)
-                        {
-                            _log.LogDebug($"RecipeProvider: ingredient type '{ingType.FullName}' missing pickup field – skipping.");
-                            continue;
-                        }
-
-                        var ingPickupObj = ingPickupField.GetValue(ingObj) as UnityEngine.Object;
-                        if (ingPickupObj == null)
-                        {
-                            continue;
-                        }
-
-                        // ---------------- ingredient parse (item/equipment) ----------------
-                        if (ingPickupObj is ItemDef ingItemDef)
-                        {
-                            ItemIndex ingIndex = ResolveItemIndex(ingItemDef);
-                            if (ingIndex == ItemIndex.None)
-                            {
-                                _log.LogDebug($"RecipeProvider: ingredient ItemDef '{ingItemDef.name}' has no ItemIndex – skipping.");
-                                continue;
-                            }
-
-                            ingList.Add(new Ingredient(
-                                kind: IngredientKind.Item,
-                                item: ingIndex,
-                                equipment: EquipmentIndex.None,
-                                count: 1
-                            ));
-                        }
-                        else if (ingPickupObj is EquipmentDef ingEqDef)
-                        {
-                            EquipmentIndex ingEqIndex = ResolveEquipmentIndex(ingEqDef);
-                            if (ingEqIndex == EquipmentIndex.None)
-                            {
-                                _log.LogDebug($"RecipeProvider: ingredient EquipmentDef '{ingEqDef.name}' has no EquipmentIndex – skipping.");
-                                continue;
-                            }
-
-                            ingList.Add(new Ingredient(
-                                kind: IngredientKind.Equipment,
-                                item: ItemIndex.None,
-                                equipment: ingEqIndex,
-                                count: 1
-                            ));
-                        }
-                        else
-                        {
-                            _log.LogDebug($"RecipeProvider: ingredient pickup type '{ingPickupObj.GetType().FullName}' unsupported – skipping.");
-                            continue;
-                        }
-                    }
-
-                    if (ingList.Count > 0)
-                    {
-                        _recipes.Add(new ChefRecipe(
-                            resultKind: resultKind,
-                            resultItem: resultItemidx,
-                            resultEquipment: resultEquipmentidx,
-                            resultCount: resultCount,
-                            ingredients: ingList.ToArray()
+                        ingList.Add(new Ingredient(
+                            kind: IngredientKind.Item,
+                            item: ingDef.itemIndex,
+                            equipment: EquipmentIndex.None,
+                            count: 1
                         ));
                     }
+
+                    else if (ingDef.equipmentIndex != EquipmentIndex.None)
+                    {
+                        ingList.Add(new Ingredient(
+                            kind: IngredientKind.Equipment,
+                            item: ItemIndex.None,
+                            equipment: ingDef.equipmentIndex,
+                            count: 1
+                        ));
+                    }
+                    // else: non-item/equipment ingredient, ignore
                 }
+
+                if (ingList.Count == 0)
+                {
+                    skippedEmptyIngList++;
+                    continue;
+                }
+
+                _recipes.Add(new ChefRecipe(
+                    resultKind: resultKind,
+                    resultItem: resultItemidx,
+                    resultEquipment: resultEquipmentidx,
+                    resultCount: resultCount,
+                    ingredients: ingList.ToArray()
+                ));
             }
             _recipesBuilt = true;
             _log.LogInfo($"RecipeProvider: built {_recipes.Count} recipes.");
             OnRecipesBuilt?.Invoke(_recipes); // Notify listeners that recipes are ready
-        }
-
-        //--------------------------------------- Index Resolvers ----------------------------------------------
-        private static ItemIndex ResolveItemIndex(ItemDef def)
-        {
-            if (!def) return ItemIndex.None;
-
-            int len = ItemCatalog.itemCount;
-            for (int i = 0; i < len; i++)
-            {
-                ItemIndex idx = (ItemIndex)i;
-                ItemDef catalogDef = ItemCatalog.GetItemDef(idx);
-                if (!catalogDef)
-                    continue;
-
-                if (ReferenceEquals(catalogDef, def))
-                    return idx;
-            }
-            return ItemIndex.None;
-        }
-
-        private static EquipmentIndex ResolveEquipmentIndex(EquipmentDef def)
-        {
-            if (!def) return EquipmentIndex.None;
-            var defs = EquipmentCatalog.equipmentDefs;
-
-            for (int i = 0; i < defs.Length; i++)
-            {
-                if (ReferenceEquals(defs[i], def))
-                {
-                    return (EquipmentIndex)i;
-                }
-            }
-            return EquipmentIndex.None;
         }
     }
 

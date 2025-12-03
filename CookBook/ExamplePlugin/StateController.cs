@@ -2,7 +2,6 @@
 using RoR2;
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace CookBook
 {
@@ -29,6 +28,9 @@ namespace CookBook
 
             _log.LogInfo("StateController.Init()");
         }
+
+        // Events
+        internal static event Action<IReadOnlyList<CraftPlanner.CraftableEntry>> OnCraftablesForUIChanged;
 
         //-------------------------------- State Tracking ----------------------------------
         /// <summary>
@@ -67,7 +69,7 @@ namespace CookBook
         /// </summary>
         internal static void OnRecipesBuilt(System.Collections.Generic.IReadOnlyList<ChefRecipe> recipes)
         {
-            _log.LogInfo($"CookBook: OnRecipesBuilt fired with {recipes.Count} recipes; (re)constructing CraftPlanner.");
+            _log.LogInfo($"CookBook: OnRecipesBuilt fired with {recipes.Count} recipes; constructing CraftPlanner.");
 
             var planner = new CraftPlanner(recipes, CookBook.MaxDepth.Value, _log);
             StateController.SetPlanner(planner); // Hand a fresh planner to the state controller
@@ -89,7 +91,7 @@ namespace CookBook
 
             if (IsChefStage())
             {
-                // TODO: fire UI event here for UI updates
+                OnCraftablesForUIChanged?.Invoke(_lastCraftables);
             }
         }
 
@@ -101,10 +103,8 @@ namespace CookBook
             if (!StateController.IsChefStage())
                 return;
 
-            // re-sort the existing list
             _lastCraftables.Sort(TierManager.CompareCraftableEntries);
-
-            // TODO: fire UI event here for UI updates
+            OnCraftablesForUIChanged?.Invoke(_lastCraftables);
         }
 
         /// <summary>

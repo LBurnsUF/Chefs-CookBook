@@ -1,13 +1,11 @@
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
-using R2API;
+using RoR2.ContentManagement;
 using RoR2;
 
 namespace CookBook
 {
-    [BepInDependency(LanguageAPI.PluginGUID, BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency(ItemAPI.PluginGUID)]
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
 
     public class CookBook : BaseUnityPlugin
@@ -71,6 +69,7 @@ namespace CookBook
             // TODO: Initialize settings UI via SettingsUI.cs
             RecipeProvider.Init(Log); // Parse all chef recipe rules
             StateController.Init(Log); // Initialize chef/state logic
+            ChefDialogueHooks.Init(Log); // TODO: actually fill in lol
         }
 
         private void OnDestroy()
@@ -79,6 +78,7 @@ namespace CookBook
             RecipeProvider.OnRecipesBuilt -= StateController.OnRecipesBuilt;
             TierManager.OnTierOrderChanged -= StateController.OnTierOrderChanged;
             TierOrder.SettingChanged -= TierManager.OnTierOrderConfigChanged;
+            ContentManager.onContentPacksAssigned -= RecipeProvider.OnContentPacksAssigned;
         }
     }
 }

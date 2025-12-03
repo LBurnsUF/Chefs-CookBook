@@ -203,7 +203,7 @@ namespace CookBook
             // fill Item snapshot
             for (int i = 0; i < itemLen; i++)
             {
-                itemstacks[i] = inv.GetItemCount((ItemIndex)i);
+                itemstacks[i] = inv.GetItemCountPermanent((ItemIndex)i);
             }
 
             // fill Equipment snapshot
@@ -212,7 +212,8 @@ namespace CookBook
             // step through all equipment slots, recording all seen equipment
             for (int slot = 0; slot < slotCount; slot++)
             {
-                var state = inv.GetEquipment((uint)slot);
+                // set = 0u for the active equipment set
+                var state = inv.GetEquipment((uint)slot, 0u);
                 var eqIndex = state.equipmentIndex;
 
                 if (eqIndex != EquipmentIndex.None)
@@ -225,6 +226,7 @@ namespace CookBook
                     }
                 }
             }
+
             _snapshot = new InventorySnapshot(itemstacks, equipmentstacks);
             OnInventoryChanged?.Invoke(clone(itemstacks), clone(equipmentstacks)); // Notify listeners without mutating stacks.
         }

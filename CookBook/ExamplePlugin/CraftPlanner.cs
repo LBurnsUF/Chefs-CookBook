@@ -537,8 +537,6 @@ namespace CookBook
             target.Kind == RecipeResultKind.Item
                 ? (ItemCatalog.GetItemDef(target.Item)?.nameToken ?? target.Item.ToString())
                 : (EquipmentCatalog.GetEquipmentDef(target.Equipment)?.nameToken ?? target.Equipment.ToString());
-
-            _log.LogDebug($"[Planner] Target {targetName} ({target.Kind}): {plan.Chains.Count} deduped chains.");
         }
     }
 }
