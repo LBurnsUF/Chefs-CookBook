@@ -70,8 +70,6 @@ namespace CookBook
         {
             _recipes.Clear(); // initialize
             
-            _log.LogInfo("RecipeProvider: Content packs assigned, building recipes from CraftableCatalog");
-
             // fill in, no reflection logic anymore
             var recipesArray = CraftableCatalog.GetAllRecipes();
             if (recipesArray == null || recipesArray.Length == 0)
@@ -196,7 +194,6 @@ namespace CookBook
                 ));
             }
             _recipesBuilt = true;
-            _log.LogInfo($"RecipeProvider: built {_recipes.Count} recipes.");
             OnRecipesBuilt?.Invoke(_recipes); // Notify listeners that recipes are ready
         }
     }
