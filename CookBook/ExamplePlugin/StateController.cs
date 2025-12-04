@@ -182,11 +182,6 @@ namespace CookBook
 
         internal static void OnChefUiClosed(CraftingController controller)
         {
-            if (!IsChefStage()) 
-            {
-                return;
-            }
-
             _log.LogDebug("StateController: Chef UI closed.");
             CraftUI.Detach(); // Hide CraftUI
             _chefDialogueOpen = false;
