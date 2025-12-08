@@ -144,8 +144,9 @@ namespace CookBook
                         EmitCraftableGroup(result, rk, currentCount, currentGroup);
 
                         // start new group
-                        currentGroup = new List<RecipeChain> { chain };
+                        currentGroup.Clear();
                         currentCount = chain.ResultCount;
+                        currentGroup.Add(chain);
                     }
                 }
                 if (hasGroup)
@@ -154,13 +155,12 @@ namespace CookBook
                 }
             }
 
-
-
             // sort primary item tier, secondary alphanumeric
             result.Sort(TierManager.CompareCraftableEntries);
 
             _log.LogDebug($"CraftPlanner.ComputeCraftable: {result.Count} entries from " + $"{itemStacks.Length} items / {equipmentStacks.Length} equipment.");
-            OnCraftablesUpdated?.Invoke(result); // notify listeners that new craftables is built using invoke
+
+            OnCraftablesUpdated?.Invoke(result);
             return result;
         }
 

@@ -20,7 +20,7 @@ namespace CookBook
         private static GameObject _cookbookRoot;
         private static RectTransform _recipeListContent;
         private static TMP_InputField _searchInputField;
-        private static RectTransform _templateIconSlot;
+        private static GameObject _templateIconSlot;
         private static Sprite _borderPixelSprite;
 
 
@@ -216,7 +216,8 @@ namespace CookBook
             _panelWidth = cbRT.rect.width;
             _panelHeight = cbRT.rect.height;
 
-            DumpHierarchy(bgContainerTr, 0);
+            EnsureResultSlotTemplate(craftingPanel);
+                
             // TODO: set up timer for perf analysis here
             CookBookSkeleton(cbRT);
 
@@ -295,19 +296,25 @@ namespace CookBook
         }
 
         //----------------------- Attach Helpers --------------------------------
-        private static RectTransform GetTemplateIconSlot()
+        private static void EnsureResultSlotTemplate(CraftingPanel craftingPanel)
         {
-            if (_templateIconSlot) return _templateIconSlot;
-
-            // Find any existing item icon slot in the vanilla UI
-            // Adjust this path to whatever you’ve inspected in the scene
-            var inv = UnityEngine.Object.FindObjectOfType<ItemIcon>(); // or some known root
-            if (inv)
+            if (_templateIconSlot != null)
             {
-                _templateIconSlot = inv.GetComponent<RectTransform>();
+                return;
             }
 
-            return _templateIconSlot;
+            var resultSlot = craftingPanel.transform.Find(
+                "MainPanel/Juice/BGContainer/CraftingContainer/Background/Result");
+
+            if (!resultSlot)
+            {
+                _log?.LogWarning("CraftUI: Could not find Result slot under CraftingPanel.");
+                return;
+            }
+
+            _templateIconSlot = UnityEngine.Object.Instantiate(resultSlot.gameObject);
+            _templateIconSlot.name = "CookBookResultSlotTemplate";
+            _templateIconSlot.SetActive(false);   // keep as template
         }
 
         static void DumpHierarchy(Transform t, int depth = 0)
@@ -785,12 +792,7 @@ namespace CookBook
             rowTopH.childControlWidth = true;
             rowTopH.childForceExpandHeight = true;
             rowTopH.childForceExpandWidth = false;
-            rowTopH.padding = new RectOffset(
-        0,
-        0,
-        Mathf.RoundToInt(topPadPx),
-        Mathf.RoundToInt(bottomPadPx)
-        );
+            rowTopH.padding = new RectOffset(0, 0, Mathf.RoundToInt(topPadPx), Mathf.RoundToInt(bottomPadPx));
 
             float borderThickness = 1f;
             GameObject topBorder = new GameObject("TopBorder", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
@@ -861,51 +863,110 @@ namespace CookBook
 
             // (TODO: add listener to dropBtn.onClick to toggle PathsContainer)
 
-            // ---------------- IconBackground (fixed square) ----------------
-            GameObject iconBGGO = new GameObject("IconBackground", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
-            var iconBGRT = iconBGGO.GetComponent<RectTransform>();
-            var iconBGImg = iconBGGO.GetComponent<Image>();
-            var iconBGLE = iconBGGO.GetComponent<LayoutElement>();
+            // ---------------- Item Slot ----------------
+            GameObject slotGO;
+            RectTransform slotRT;
 
-            iconBGRT.SetParent(rowTopRT, false);
-
-            iconBGLE.preferredHeight = innerHeight;
-            iconBGLE.preferredWidth = iconBGLE.preferredHeight;
-
-            iconBGImg.color = new Color32(26, 22, 23, 255);
-            iconBGImg.raycastTarget = false;
-
-            // ensure square
-            var bgAspect = iconBGGO.AddComponent<AspectRatioFitter>();
-            bgAspect.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
-            bgAspect.aspectRatio = 1f;
-
-            GameObject iconGO = new GameObject("Icon", typeof(RectTransform), typeof(Image));
-            var iconRT = iconGO.GetComponent<RectTransform>();
-            var iconImg = iconGO.GetComponent<Image>();
-
-            iconRT.SetParent(iconBGRT, false);
-            iconRT.anchorMin = Vector2.zero;
-            iconRT.anchorMax = Vector2.one;
-            iconRT.offsetMin = Vector2.zero;
-            iconRT.offsetMax = Vector2.zero;
-
-            iconImg.raycastTarget = false;
-            iconImg.preserveAspect = true;
-
-            Sprite iconSprite = GetEntryIcon(entry);
-            if (iconSprite != null)
+            if (_templateIconSlot != null)
             {
-                iconImg.sprite = iconSprite;
-                iconImg.color = Color.white;
+                slotGO = UnityEngine.Object.Instantiate(_templateIconSlot, rowTopRT);
+                slotGO.name = "ItemSlot";
+                slotGO.SetActive(true);
+                slotRT = (RectTransform)slotGO.transform;
             }
             else
             {
-                iconImg.color = new Color(1f, 1f, 1f, 0.1f);
+                slotGO = new GameObject("ItemSlot", typeof(RectTransform), typeof(Image));
+                slotRT = slotGO.GetComponent<RectTransform>();
+                slotRT.SetParent(rowTopRT, false);
             }
 
-            // Item label
-            GameObject labelGO = new GameObject("ItemLabel", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+            slotRT.anchorMin = new Vector2(0.5f, 0.5f);
+            slotRT.anchorMax = new Vector2(0.5f, 0.5f);
+            slotRT.pivot = new Vector2(0.5f, 0.5f);
+            slotRT.anchoredPosition = Vector2.zero;
+            slotRT.offsetMin = Vector2.zero;
+            slotRT.offsetMax = Vector2.zero;
+
+            // fixed square, height = innerHeight
+            var slotLE = slotGO.GetComponent<LayoutElement>() ?? slotGO.AddComponent<LayoutElement>();
+            slotLE.preferredHeight = innerHeight;
+            slotLE.preferredWidth = innerHeight;
+            slotLE.flexibleWidth = 0f;
+            slotLE.flexibleHeight = 0f;
+            var slotAspect = slotGO.GetComponent<AspectRatioFitter>() ?? slotGO.AddComponent<AspectRatioFitter>();
+            slotAspect.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
+            slotAspect.aspectRatio = 1f;
+
+            // ---------------- Icon/Stack text ----------------
+            Image iconImage = null;
+            RectTransform displayIconRT = null;
+
+            Transform holder = slotRT.Find("Holder");
+            if (holder != null)
+            {
+                displayIconRT = holder.Find("DisplayIcon") as RectTransform;
+                if (displayIconRT != null)
+                {
+                    iconImage = displayIconRT.GetComponent<Image>();
+                }
+                var timer = holder.Find("DisplayIcon/Timer");
+                if (timer)
+                {
+                    timer.gameObject.SetActive(false);
+                }
+                var counter = holder.Find("DisplayIcon/Managed_Sprite_ItemCounter");
+                if (counter)
+                {
+                    counter.gameObject.SetActive(false);
+                }
+            }
+            else
+            {
+                displayIconRT = slotRT;
+                iconImage = slotGO.GetComponent<Image>();
+            }
+
+            if (iconImage != null)
+            {
+                Sprite iconSprite = GetEntryIcon(entry);
+                if (iconSprite != null)
+                {
+                    iconImage.sprite = iconSprite;
+                    iconImage.color = Color.white;
+                    iconImage.preserveAspect = true;
+                    iconImage.raycastTarget = false;
+                }
+                else
+                {
+                    iconImage.sprite = null;
+                    iconImage.color = new Color(1f, 1f, 1f, 0.1f);
+                    iconImage.raycastTarget = false;
+                }
+            }
+
+            // StackText
+            if (displayIconRT != null)
+            {
+                var stackTMP = displayIconRT.Find("StackText")?.GetComponent<TMPro.TextMeshProUGUI>();
+                if (stackTMP != null)
+                {
+                    int count = entry.ResultCount;
+
+                    if (count > 1)
+                    {
+                        stackTMP.gameObject.SetActive(true);
+                        stackTMP.text = count.ToString();
+                    }
+                    else
+                    {
+                        stackTMP.gameObject.SetActive(false);
+                    }
+                }
+            }
+
+                // ---------------- Item Label ----------------
+                GameObject labelGO = new GameObject("ItemLabel", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
             var labelRT = labelGO.GetComponent<RectTransform>();
             var labelTMP = labelGO.GetComponent<TextMeshProUGUI>();
             var labelLE = labelGO.GetComponent<LayoutElement>();
@@ -971,7 +1032,7 @@ namespace CookBook
             return rowGO;
         }
 
-        // ------------------------ Helpers  ------------------------------
+        // ------------------------ Events  ------------------------------
         private static void OnSearchTextChanged(string text)
         {
             if (_recipeRowUIs == null)
@@ -996,6 +1057,8 @@ namespace CookBook
                 row.RowGO.SetActive(matches);
             }
         }
+
+        // ------------------------ Helpers  ------------------------------
         private static bool EntryMatchesSearch(CraftableEntry entry, string term)
         {
             if (string.IsNullOrEmpty(term))
@@ -1061,20 +1124,6 @@ namespace CookBook
                     return null;
             }
         }
-
-        private static int GetEntryStackCount(CraftableEntry entry)
-        {
-            if (entry == null || entry.Chains == null || entry.Chains.Count == 0)
-                return 1;
-
-            var chain = entry.Chains[0];
-            if (chain.Steps == null || chain.Steps.Count == 0)
-                return 1;
-
-            var finalStep = chain.Steps[chain.Steps.Count - 1];
-            return Mathf.Max(1, finalStep.ResultCount);
-        }
-
 
         private static Color GetEntryColor(CraftableEntry entry)
         {
