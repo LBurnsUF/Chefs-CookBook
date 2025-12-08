@@ -12,15 +12,17 @@ namespace CookBook
     internal static class CraftUI
     {
         private static ManualLogSource _log;
-        private static GameObject _cookbookRoot;
-        private static CraftingController _currentController;
-        private static Sprite _borderPixelSprite;
-
-        private static bool _skeletonBuilt = false;
-        private static RectTransform _recipeListContent;
-        private static TMP_InputField _searchInputField;
         private static IReadOnlyList<CraftableEntry> _lastCraftables;
         private static readonly List<RecipeRowUI> _recipeRowUIs = new();
+        private static bool _skeletonBuilt = false;
+        private static CraftingController _currentController;
+
+        private static GameObject _cookbookRoot;
+        private static RectTransform _recipeListContent;
+        private static TMP_InputField _searchInputField;
+        private static RectTransform _templateIconSlot;
+        private static Sprite _borderPixelSprite;
+
 
         // ---------------- Layout constants (normalized) ----------------
         static float  _panelWidth;
@@ -53,7 +55,6 @@ namespace CookBook
         internal const float MetaDataElementSpacingNorm = 0.0159744409f;
         internal const float DropDownArrowSizeNorm = 0.0511182109f;
         internal const float textSizeNorm = 0.0383386581f;
-
 
         //------------------------- LifeCycle ----------------------------
         internal static void Init(ManualLogSource log)
@@ -198,8 +199,10 @@ namespace CookBook
             cbRT.anchorMin = new Vector2(1f, 0.5f);
             cbRT.anchorMax = new Vector2(1f, 0.5f);
             cbRT.pivot = new Vector2(1f, 0.5f);
+
             // match vertical span of vanilla content
             cbRT.sizeDelta = new Vector2(cookbookWidth, contentBounds.size.y);
+
             /// ensure equal margins, same y position
             cbRT.anchoredPosition = new Vector2(-sideMargin, contentBounds.center.y);
 
@@ -212,6 +215,9 @@ namespace CookBook
             );
             _panelWidth = cbRT.rect.width;
             _panelHeight = cbRT.rect.height;
+
+            DumpHierarchy(bgContainerTr, 0);
+            // TODO: set up timer for perf analysis here
             CookBookSkeleton(cbRT);
 
             if (_lastCraftables != null && _lastCraftables.Count > 0)
@@ -251,6 +257,7 @@ namespace CookBook
             PopulateRecipeList(_lastCraftables);
         }
 
+        // TODO: set up timer for perf analysis here
         internal static void PopulateRecipeList(IReadOnlyList<CraftableEntry> craftables)
         {
             if (!_skeletonBuilt || _recipeListContent == null)
@@ -278,7 +285,6 @@ namespace CookBook
                     _log.LogDebug($"entry {entry} is null");
                     continue; // safety for now
                 }
-
                 var rowGO = CreateRecipeRow(_recipeListContent, entry);
                 _recipeRowUIs.Add(new RecipeRowUI
                 {
@@ -289,6 +295,21 @@ namespace CookBook
         }
 
         //----------------------- Attach Helpers --------------------------------
+        private static RectTransform GetTemplateIconSlot()
+        {
+            if (_templateIconSlot) return _templateIconSlot;
+
+            // Find any existing item icon slot in the vanilla UI
+            // Adjust this path to whatever you’ve inspected in the scene
+            var inv = UnityEngine.Object.FindObjectOfType<ItemIcon>(); // or some known root
+            if (inv)
+            {
+                _templateIconSlot = inv.GetComponent<RectTransform>();
+            }
+
+            return _templateIconSlot;
+        }
+
         static void DumpHierarchy(Transform t, int depth = 0)
         {
             string indent = new string(' ', depth * 2);
@@ -818,7 +839,7 @@ namespace CookBook
             dropLE.flexibleHeight = 0f;
 
             dropImg.color = Color.clear;
-            dropImg.raycastTarget = true;
+            dropImg.raycastTarget = true; // TODO: allow user to click anywhere in rowtop to extend/retract the pathscontainer, without impeding vertical scroll
 
             // Arrow child
             GameObject arrowGO = new GameObject("Arrow", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -1040,6 +1061,20 @@ namespace CookBook
                     return null;
             }
         }
+
+        private static int GetEntryStackCount(CraftableEntry entry)
+        {
+            if (entry == null || entry.Chains == null || entry.Chains.Count == 0)
+                return 1;
+
+            var chain = entry.Chains[0];
+            if (chain.Steps == null || chain.Steps.Count == 0)
+                return 1;
+
+            var finalStep = chain.Steps[chain.Steps.Count - 1];
+            return Mathf.Max(1, finalStep.ResultCount);
+        }
+
 
         private static Color GetEntryColor(CraftableEntry entry)
         {

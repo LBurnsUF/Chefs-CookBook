@@ -62,6 +62,7 @@ namespace CookBook
             public RecipeResultKind ResultKind;
             public ItemIndex ResultItem;
             public EquipmentIndex ResultEquipment;
+            public int ResultCount;
 
             public int MinDepth;
             public List<RecipeChain> Chains = new();
@@ -81,7 +82,6 @@ namespace CookBook
         /// <summary>
         /// Given a snapshot of item stacks (indexed by ItemCatalog.itemCount),
         /// compute all craftable results, up to the preconfigured _maxDepth.
-        ///  currently only checks item costs.
         /// </summary>
         public List<CraftableEntry> ComputeCraftable(int[] itemStacks, int[] equipmentStacks)
         {
@@ -113,20 +113,48 @@ namespace CookBook
                     continue;
                 }
 
-                // sort by depth, ascending
-                affordableChains.Sort((a, b) => a.Depth.CompareTo(b.Depth));
-
-                var entry = new CraftableEntry
+                // sort primary ResultCount, secondary Depth
+                affordableChains.Sort((a, b) =>
                 {
-                    ResultKind = rk.Kind,
-                    ResultItem = rk.Item,
-                    ResultEquipment = rk.Equipment,
-                    MinDepth = affordableChains[0].Depth,
-                    Chains = affordableChains
-                };
+                    int c = a.ResultCount.CompareTo(b.ResultCount);
+                    if (c != 0) return c;
+                    return a.Depth.CompareTo(b.Depth);
+                });
 
-                result.Add(entry);
+                int currentCount = 0;
+                bool hasGroup = false;
+                List<RecipeChain> currentGroup = new List<RecipeChain>();
+
+                foreach (var chain in affordableChains)
+                {
+                    if (!hasGroup)
+                    {
+                        currentCount = chain.ResultCount;
+                        currentGroup.Add(chain);
+                        hasGroup = true;
+                        continue;
+                    }
+                    if (chain.ResultCount == currentCount)
+                    {
+                        currentGroup.Add(chain);
+                    }
+                    else
+                    {
+                        // resultCount changed: flush previous group
+                        EmitCraftableGroup(result, rk, currentCount, currentGroup);
+
+                        // start new group
+                        currentGroup = new List<RecipeChain> { chain };
+                        currentCount = chain.ResultCount;
+                    }
+                }
+                if (hasGroup)
+                {
+                    EmitCraftableGroup(result, rk, currentCount, currentGroup);
+                }
             }
+
+
 
             // sort primary item tier, secondary alphanumeric
             result.Sort(TierManager.CompareCraftableEntries);
@@ -136,7 +164,29 @@ namespace CookBook
             return result;
         }
 
-        // ------------------------ Private query Helpers ---------------------------
+        // ------------------------ Query Helpers ---------------------------
+        private static void EmitCraftableGroup(
+    List<CraftableEntry> result,
+    ResultKey rk,
+    int resultCount,
+    List<RecipeChain> group)
+        {
+            if (group == null || group.Count == 0)
+                return;
+
+            var entry = new CraftableEntry
+            {
+                ResultKind = rk.Kind,
+                ResultItem = rk.Item,
+                ResultEquipment = rk.Equipment,
+                ResultCount = resultCount,
+                MinDepth = group[0].Depth,
+                Chains = new List<RecipeChain>(group)
+            };
+
+            result.Add(entry);
+        }
+
         /// <summary>
         /// Checks whether the given inventory satisfies the required external item costs for the specified chain.
         /// </summary>
@@ -280,6 +330,7 @@ namespace CookBook
             // Indexed by ItemCatalog.itemCount
             public int[] TotalItemCost { get; }
             public Dictionary<EquipmentIndex, int> TotalEquipmentCost { get; }
+            public int ResultCount { get; }
 
             public RecipeChain(
                 List<ChefRecipe> steps,
@@ -289,6 +340,11 @@ namespace CookBook
                 Steps = steps.ToArray();
                 TotalItemCost = totalItemCost;
                 TotalEquipmentCost = totalEquipmentCost;
+
+                if (steps != null && steps.Count > 0)
+                    ResultCount = Math.Max(1, steps[steps.Count - 1].ResultCount);
+                else
+                    ResultCount = 1;
             }
         }
 
