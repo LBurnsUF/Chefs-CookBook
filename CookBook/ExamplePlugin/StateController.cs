@@ -101,10 +101,10 @@ namespace CookBook
         {
             _lastCraftables = craftables;
 
-            if (IsChefStage())
-            {
-                OnCraftablesForUIChanged?.Invoke(_lastCraftables);
-            }
+            if (!StateController.IsChefStage())
+                return;
+
+            OnCraftablesForUIChanged?.Invoke(_lastCraftables);
         }
 
         internal static void OnTierOrderChanged()
@@ -172,14 +172,12 @@ namespace CookBook
 
             _chefDialogueOpen = true;
             _activeCraftingController = controller;
-            _log.LogDebug("StateController: Chef UI opened.");
             CraftUI.Attach(_activeCraftingController); // show CraftUI
         }
 
         internal static void OnChefUiClosed(CraftingController controller)
         {
-            _log.LogDebug("StateController: Chef UI closed.");
-            CraftUI.Detach(); // Hide CraftUI
+            CraftUI.Detach(); // Destroy CraftUI
             _chefDialogueOpen = false;
 
             if (_activeCraftingController == controller)

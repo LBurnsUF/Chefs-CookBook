@@ -101,6 +101,7 @@ namespace CookBook
             RecipeProvider.Shutdown();
             StateController.Shutdown();
             DialogueHooks.Shutdown();
+            CraftUI.Shutdown();
         }
     }
 }
