@@ -119,7 +119,7 @@ namespace CookBook
             SnapshotFromInventory(_localInventory);
         }
 
-        
+
         // Fallback Binding (late enable)
         private static bool TryBindFromExistingBodies()
         {
@@ -180,22 +180,21 @@ namespace CookBook
         /// </summary>
         private static void OnLocalInventoryChanged()
         {
-        if (!_enabled || _localInventory == null) 
-        {
-            return;
+            if (!_enabled || _localInventory == null)
+            {
+                return;
+            }
+
+            SnapshotFromInventory(_localInventory);
         }
 
-        _log.LogDebug("InventoryTracker.OnLocalInventoryChanged(): refreshing snapshot");
-        SnapshotFromInventory(_localInventory);
-        }
-        
         //--------------------------------------- Snapshot Handling ----------------------------------------
         private static void SnapshotFromInventory(Inventory inv)
         {
             int itemLen = ItemCatalog.itemCount;
             int equipLen = EquipmentCatalog.equipmentCount;
 
-            
+
             var itemstacks = new int[itemLen];
             var equipmentstacks = new int[equipLen];
 

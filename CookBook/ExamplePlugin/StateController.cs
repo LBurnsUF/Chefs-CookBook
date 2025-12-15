@@ -10,7 +10,6 @@ using System.Reflection;
 using UnityEngine;
 using static CookBook.CraftPlanner;
 
-
 namespace CookBook
 {
     internal static class StateController
@@ -29,21 +28,14 @@ namespace CookBook
         private static GameObject _targetCraftingObject;
         private static Coroutine _craftingRoutine;
         private static GameObject _runnerGO;
-        private static MonoBehaviour _runner;
-
-        private static float _mealPrepTotalDuration = 4.0f;
-        private static FieldInfo _mixField;
-        private static FieldInfo _storeField;
-        private static bool _reflectionAttemptedAndFound = false;
+        private static MonoBehaviour _craftingHandler;
 
         // Events
         internal static event Action<IReadOnlyList<CraftPlanner.CraftableEntry>> OnCraftablesForUIChanged;
         internal static event Action OnChefStageEntered;
         internal static event Action OnChefStageExited;
 
-        private class StateRunner : MonoBehaviour
-        {
-        }
+        private class StateRunner : MonoBehaviour { }
 
         //--------------------------- LifeCycle -------------------------------
         internal static void Init(ManualLogSource log)
@@ -109,7 +101,7 @@ namespace CookBook
         {
             StateController.OnChefStageEntered += EnableChef;
             StateController.OnChefStageExited += DisableChef;
-            _runner = _runnerGO.AddComponent<StateRunner>();
+            _craftingHandler = _runnerGO.AddComponent<StateRunner>();
         }
 
         /// <summary>
@@ -117,10 +109,10 @@ namespace CookBook
         /// </summary>
         private static void OnRunDestroy(Run run)
         {
-            if (_runner)
+            if (_craftingHandler)
             {
-                UnityEngine.Object.Destroy(_runner);
-                _runner = null;
+                UnityEngine.Object.Destroy(_craftingHandler);
+                _craftingHandler = null;
             }
 
             CraftUI.Detach();
@@ -135,19 +127,13 @@ namespace CookBook
             InventoryTracker.OnInventoryChanged -= OnInventoryChanged;
         }
 
-        // -------------------- Rebuild Events --------------------
-        /// <summary>
-        /// Called when RecipeProvider finishes building the recipe list.
-        /// </summary>
+        // -------------------- CookBook Handshake Events --------------------
         internal static void OnRecipesBuilt(System.Collections.Generic.IReadOnlyList<ChefRecipe> recipes)
         {
-            _log.LogInfo($"CookBook: OnRecipesBuilt fired with {recipes.Count} recipes; constructing CraftPlanner.");
-
             var planner = new CraftPlanner(recipes, CookBook.MaxDepth.Value, _log);
             StateController.SetPlanner(planner);
         }
 
-        // -------------------- CookBook Handshake Events --------------------
         private static void OnInventoryChanged(int[] itemStacks, int[] equipmentStacks)
         {
             if (_planner == null)
@@ -321,10 +307,10 @@ namespace CookBook
             if (IsAutoCrafting)
             {
                 _log.LogDebug("Craft already in progress, killing previous chain.");
-                _runner.StopCoroutine(_craftingRoutine);
+                _craftingHandler.StopCoroutine(_craftingRoutine);
             }
 
-            _craftingRoutine = _runner.StartCoroutine(CraftChainRoutine(chain));
+            _craftingRoutine = _craftingHandler.StartCoroutine(CraftChainRoutine(chain));
         }
 
         private static IEnumerator CraftChainRoutine(RecipeChain chain)

@@ -182,6 +182,7 @@ namespace CookBook
             if (!isRecursiveLoop) stack.Remove(current);
         }
 
+        // TODO: update dedupe to use hashing
         /// <summary>
         /// Given the current chain, compute its external input signature and,
         /// if it's new for this result, store it as a RecipeChain.
@@ -373,8 +374,6 @@ namespace CookBook
             // sort primary item tier, secondary alphanumeric
             result.Sort(TierManager.CompareCraftableEntries);
 
-            _log.LogDebug($"CraftPlanner.ComputeCraftable: {result.Count} entries from " + $"{itemStacks.Length} items / {equipmentStacks.Length} equipment.");
-
             OnCraftablesUpdated?.Invoke(result);
             return;
         }
@@ -456,18 +455,46 @@ namespace CookBook
         /// </summary>
         internal sealed class RecipeChain
         {
-            public IReadOnlyList<ChefRecipe> Steps { get; }
-            public int Depth => Steps.Count;
-            public int[] TotalItemCost { get; }
-            public int[] TotalEquipmentCost { get; }
-            public int ResultCount { get; }
+            internal IReadOnlyList<ChefRecipe> Steps { get; }
+            internal int Depth => Steps.Count;
+            internal int[] TotalItemCost { get; }
+            internal int[] TotalEquipmentCost { get; }
+            internal int ResultCount { get; }
 
-            public RecipeChain(List<ChefRecipe> steps, int[] items, int[] equip)
+            private readonly long _canonicalSignature;
+            public long CanonicalSignature => _canonicalSignature;
+
+            internal RecipeChain(List<ChefRecipe> steps, int[] items, int[] equip)
             {
                 Steps = steps.ToArray();
                 TotalItemCost = items;
                 TotalEquipmentCost = equip;
                 ResultCount = (steps.Count > 0) ? Math.Max(1, steps[0].ResultCount) : 1;
+
+                _canonicalSignature = CalculateCanonicalSignature(Steps);
+            }
+
+            private static long CalculateCanonicalSignature(IReadOnlyList<ChefRecipe> chain)
+            {
+                if (chain == null || chain.Count == 0)
+                {
+                    return 0;
+                }
+
+                var recipeHashes = new List<int>(chain.Count);
+                foreach (var recipe in chain)
+                {
+                    recipeHashes.Add(recipe.GetHashCode());
+                }
+
+                recipeHashes.Sort();
+
+                long signature = 17;
+                foreach (int hash in recipeHashes)
+                {
+                    signature = signature * 31 + hash;
+                }
+                return signature;
             }
         }
 
@@ -477,8 +504,9 @@ namespace CookBook
         internal sealed class PlanEntry
         {
             public ResultKey Result { get; }
-            public List<RecipeChain> Chains { get; } = new();
-            public PlanEntry(ResultKey result) { Result = result; }
+            internal List<RecipeChain> Chains { get; } = new();
+            public HashSet<long> CanonicalSignatures { get; } = new();
+            internal PlanEntry(ResultKey result) { Result = result; }
         }
 
         /// <summary>

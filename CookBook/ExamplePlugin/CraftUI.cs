@@ -253,7 +253,7 @@ namespace CookBook
             labelRect.GetComponent<Image>().enabled = false;
             AddBorder(labelRect, new Color32(209, 209, 210, 255), 2f, 2f, 4f, 4f);
 
-            _log.LogInfo(
+            _log.LogDebug(
                 $"CraftUI.Attach: CookBook panel attached. baseWidth={baseWidth:F1}, newWidth={newBgWidth:F1}, cookbookWidth={cookbookWidth:F1}, invBaseWidth={invBaseWidth:F1}"
             );
             _panelWidth = cbRT.rect.width;
@@ -838,7 +838,6 @@ namespace CookBook
                 runtime.DropdownLayoutElement.preferredHeight = 0f;
             }
 
-            _log.LogDebug("CreateRecipeRow: rendered row for " + GetEntryDisplayName(entry));
             return rowGO;
         }
 
@@ -1152,10 +1151,6 @@ namespace CookBook
             runtime.CollapsedHeight = rowRT.sizeDelta.y;
             runtime.IsExpanded = false;
 
-            _log.LogDebug("Built Recipe Row Template.");
-            _log.LogInfo($"BuildRecipeRowTemplate: panelH={_panelHeight}, " +
-             $"rowTopHeightPx={rowTopHeightPx}, innerHeight={innerHeight}");
-            DumpHierarchy((Transform)rowGO.transform, 0);
             _recipeRowTemplate = rowGO;
         }
 
@@ -1224,7 +1219,6 @@ namespace CookBook
 
             AddBorder(rowRT, new Color32(209, 209, 210, 255), top: 1f, bottom: 1f);
             _pathRowTemplate = rowGO;
-            _log.LogDebug("Built Path Row Template.");
         }
 
         private static void BuildSharedDropdown()
@@ -1682,8 +1676,6 @@ namespace CookBook
                 _log.LogWarning("Craft button clicked but no chain data selected.");
                 return;
             }
-
-            _log.LogInfo($"[CraftUI] Requesting craft for chain with cost {_selectedChainData.TotalItemCost?.Length ?? 0}");
 
             StateController.RequestCraft(_selectedChainData);
         }

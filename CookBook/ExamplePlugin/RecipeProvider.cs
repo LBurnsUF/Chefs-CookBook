@@ -159,7 +159,6 @@ namespace CookBook
                 {
                     var recipe = new ChefRecipe(resultKind, resultItemidx, resultEquipmentidx, resultCount, rawIngredients.ToArray());
                     _recipes.Add(recipe);
-                    PrintRecipeDebug(recipe, resultPickupDef.internalName);
                 }
                 else
                 {
@@ -172,25 +171,12 @@ namespace CookBook
 
                         var recipe = new ChefRecipe(resultKind, resultItemidx, resultEquipmentidx, resultCount, pair);
                         _recipes.Add(recipe);
-                        PrintRecipeDebug(recipe, resultPickupDef.internalName);
                     }
                 }
             }
             _recipesBuilt = true;
             _log.LogInfo($"RecipeProvider: Built {_recipes.Count} explicit recipes from game data.");
-            OnRecipesBuilt?.Invoke(_recipes); // Notify listeners that recipes are ready
-        }
-        private static void PrintRecipeDebug(ChefRecipe r, string resultName)
-        {
-            string logMsg = $"[RECIPE] Result: {resultName} (x{r.ResultCount}) | Ingredients: ";
-            foreach (var ing in r.Ingredients)
-            {
-                string name = (ing.Kind == IngredientKind.Item)
-                    ? ItemCatalog.GetItemDef(ing.Item)?.name ?? "null"
-                    : EquipmentCatalog.GetEquipmentDef(ing.Equipment)?.name ?? "null";
-                logMsg += $"{name} (x{ing.Count}), ";
-            }
-            _log.LogInfo(logMsg);
+            OnRecipesBuilt?.Invoke(_recipes);
         }
     }
 
@@ -208,6 +194,7 @@ namespace CookBook
         Equipment
     }
 
+    // TODO: add clean hashing
     /// <summary>ingredient entry</summary>
     internal readonly struct Ingredient
     {
@@ -223,8 +210,32 @@ namespace CookBook
             Equipment = equipment;
             Count = count;
         }
+
+        public override int GetHashCode()
+        {
+            int hash = 17;
+            hash = hash * 31 + (int)Kind;
+            hash = hash * 31 + (int)Item;
+            hash = hash * 31 + (int)Equipment;
+            hash = hash * 31 + Count;
+            return hash;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Ingredient other && Equals(other);
+        }
+
+        public bool Equals(Ingredient other)
+        {
+            return Kind == other.Kind &&
+                   Item == other.Item &&
+                   Equipment == other.Equipment &&
+                   Count == other.Count;
+        }
     }
 
+    // TODO: add clean hashing
     /// <summary>result entry</summary>
     internal sealed class ChefRecipe
     {
@@ -247,5 +258,67 @@ namespace CookBook
             ResultCount = resultCount;
             Ingredients = ingredients;
         }
+
+        private int GetIngredientsCanonicalHash()
+        {
+            if (Ingredients == null || Ingredients.Length == 0)
+            {
+                return 0;
+            }
+
+            var ingredientHashes = new List<int>(Ingredients.Length);
+            foreach (var ingredient in Ingredients)
+            {
+                ingredientHashes.Add(ingredient.GetHashCode());
+            }
+
+            ingredientHashes.Sort();
+
+            int hash = 17;
+            foreach (int ingHash in ingredientHashes)
+            {
+                hash = hash * 31 + ingHash;
+            }
+            return hash;
+        }
+
+        public override int GetHashCode()
+        {
+            int hash = 17;
+
+            hash = hash * 31 + (int)ResultKind;
+            hash = hash * 31 + (int)ResultItem;
+            hash = hash * 31 + (int)ResultEquipment;
+            hash = hash * 31 + ResultCount;
+
+            hash = hash * 31 + GetIngredientsCanonicalHash();
+
+            return hash;
+        }
+        public override bool Equals(object obj)
+        {
+            return obj is ChefRecipe other && Equals(other);
+        }
+
+        public bool Equals(ChefRecipe other)
+        {
+            if (other == null) return false;
+
+            if (ResultKind != other.ResultKind ||
+                ResultItem != other.ResultItem ||
+                ResultEquipment != other.ResultEquipment ||
+                ResultCount != other.ResultCount)
+            {
+                return false;
+            }
+
+            if (GetIngredientsCanonicalHash() != other.GetIngredientsCanonicalHash())
+            {
+                return false;
+            }
+
+            return true;
+        }
+
     }
 }
