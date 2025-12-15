@@ -68,9 +68,15 @@ namespace CookBook
         /// </summary>
         internal void RebuildAllPlans()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
             BuildRecipeIndex();
             BuildPlans();
+
+            sw.Stop();
+
             _log.LogInfo($"CraftPlanner: Built plans for {_plans.Count} results.");
+            _log.LogInfo($"CraftPlanner: RebuildAllPlans completed in {sw.ElapsedMilliseconds}ms");
         }
 
         // ------------------------ LUT Build Logic ---------------------------
@@ -92,7 +98,6 @@ namespace CookBook
             }
         }
 
-        // TODO: add checks to early exit on circular crafts, or crafts that create/consume the desired resulting item in any quantity.
         private void BuildPlans()
         {
             _plans.Clear();
@@ -108,58 +113,6 @@ namespace CookBook
                 if (plan.Chains.Count > 0)
                 {
                     _plans[target] = plan;
-
-                    // --- DEBUG DUMP START ---
-                    string targetName = (target.Kind == RecipeResultKind.Item)
-                        ? ItemCatalog.GetItemDef(target.Item)?.name ?? "???"
-                        : EquipmentCatalog.GetEquipmentDef(target.Equipment)?.name ?? "???";
-
-                    if (targetName == "CritDamage")
-                    {
-                        foreach (var chain in plan.Chains)
-                        {
-                            var sb = new StringBuilder();
-                            sb.AppendLine($"[CHAIN] {targetName} (Depth {chain.Depth}):");
-
-                            int stepNum = 1;
-                            foreach (var step in chain.Steps)
-                            {
-                                // 1. Identify Result
-                                string stepResult = (step.ResultKind == RecipeResultKind.Item)
-                                    ? ItemCatalog.GetItemDef(step.ResultItem)?.name ?? "null"
-                                    : EquipmentCatalog.GetEquipmentDef(step.ResultEquipment)?.name ?? "null";
-
-                                // 2. Identify Ingredients
-                                var ingNames = new List<string>();
-                                foreach (var ing in step.Ingredients)
-                                {
-                                    string iName = (ing.Kind == IngredientKind.Item)
-                                        ? ItemCatalog.GetItemDef(ing.Item)?.name
-                                        : EquipmentCatalog.GetEquipmentDef(ing.Equipment)?.name;
-                                    ingNames.Add($"{iName} (x{ing.Count})");
-                                }
-
-                                sb.AppendLine($"   Step {stepNum}: {string.Join(" + ", ingNames)} -> {stepResult} (x{step.ResultCount})");
-                                stepNum++;
-                            }
-
-                            // 3. Print Calculated Cost
-                            sb.Append($"   >>> CALCULATED COST: ");
-                            bool first = true;
-                            for (int i = 0; i < chain.TotalItemCost.Length; i++)
-                            {
-                                if (chain.TotalItemCost[i] > 0)
-                                {
-                                    if (!first) sb.Append(", ");
-                                    sb.Append($"{ItemCatalog.GetItemDef((ItemIndex)i)?.name} (x{chain.TotalItemCost[i]})");
-                                    first = false;
-                                }
-                            }
-
-                            _log.LogInfo(sb.ToString());
-                        }
-                    }
-                    // --- DEBUG DUMP END ---
                 }
             }
         }
@@ -176,6 +129,7 @@ namespace CookBook
             plan.Chains.AddRange(validChains);
         }
 
+        // TODO: modify cycle prevention logic to allow certain types of cyclic crafts to occur, like if the user wants more of a given color of scrap, since the inputs generally require at least 1 of the inputted scrap.
         private void DFS(
            ResultKey current,
            ResultKey rootTarget,
@@ -195,7 +149,6 @@ namespace CookBook
             }
 
 
-            // Cycle Protection: allows "profit loops" but prevents infinite recursion
             bool isRecursiveLoop = stack.Contains(current);
             if (!isRecursiveLoop)
             {
@@ -204,7 +157,7 @@ namespace CookBook
 
             foreach (var recipe in options)
             {
-                if (IsCycle1Recipe(recipe))
+                if (IsCycle1Recipe(recipe)) // avoid pointless cycles that result in the input item
                 {
                     continue;
                 }
@@ -313,17 +266,6 @@ namespace CookBook
                 ? externalItems[(int)targetKey.Item]
                 : externalEquip[(int)targetKey.Equipment];
 
-            if (targetKey.Item != ItemIndex.None && ItemCatalog.GetItemDef(targetKey.Item)?.name == "CritDamage")
-            {
-                if (startupCost > 0)
-                {
-                    _log.LogInfo($"[YIELD CHECK] Chain Depth {chain.Count}");
-                    _log.LogInfo($"   Target: {ItemCatalog.GetItemDef(targetKey.Item).name}");
-                    _log.LogInfo($"   Produced: {finalBalance} | Cost: {startupCost}");
-                    _log.LogInfo($"   Result: {finalBalance - startupCost}");
-                }
-            }
-
             if ((finalBalance - startupCost) <= 0)
             {
                 return;
@@ -376,7 +318,7 @@ namespace CookBook
         /// Given a snapshot of item stacks (indexed by ItemCatalog.itemCount),
         /// compute all craftable results, up to the preconfigured _maxDepth.
         /// </summary>
-        public List<CraftableEntry> ComputeCraftable(int[] itemStacks, int[] equipmentStacks)
+        public void ComputeCraftable(int[] itemStacks, int[] equipmentStacks)
         {
             var result = new List<CraftableEntry>();
             var affordableChains = new List<RecipeChain>();
@@ -434,10 +376,8 @@ namespace CookBook
             _log.LogDebug($"CraftPlanner.ComputeCraftable: {result.Count} entries from " + $"{itemStacks.Length} items / {equipmentStacks.Length} equipment.");
 
             OnCraftablesUpdated?.Invoke(result);
-            return result;
+            return;
         }
-
-
 
         /// <summary>
         /// Checks whether the given inventory satisfies the required external item costs for the specified chain.

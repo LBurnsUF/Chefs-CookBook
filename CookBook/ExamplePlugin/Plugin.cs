@@ -17,7 +17,7 @@ namespace CookBook
         public const string PluginVersion = "1.0.0";
 
         internal static ManualLogSource Log;
-        private const int DefaultMaxDepth = 3;
+        private const int DefaultMaxDepth = 5;
 
         public static ConfigEntry<int> MaxDepth;
         public static ConfigEntry<string> TierOrder;
@@ -43,7 +43,8 @@ namespace CookBook
             TierManager.Init(Log);
 
             // discover any custom item tiers
-            ItemCatalog.availability.CallWhenAvailable(() => {
+            ItemCatalog.availability.CallWhenAvailable(() =>
+            {
                 var defaultTiers = TierManager.ParseTierOrder(TierOrder.Value);
                 var merged = TierManager.MergeOrder(defaultTiers, TierManager.DiscoverTiersFromCatalog());
 
@@ -88,7 +89,7 @@ namespace CookBook
             // Clean up global event subscriptions
             RecipeProvider.OnRecipesBuilt -= StateController.OnRecipesBuilt;
             TierManager.OnTierOrderChanged -= StateController.OnTierOrderChanged;
-            
+
             // unsubscribe from settings changes
             TierOrder.SettingChanged -= TierManager.OnTierOrderConfigChanged;
             MaxDepth.SettingChanged -= StateController.OnMaxDepthChanged;

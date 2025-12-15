@@ -3,6 +3,7 @@ using RoR2;
 using RoR2.UI;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -28,10 +29,19 @@ namespace CookBook
         private static GameObject _ResultSlotTemplate;
 
         private static RecipeRowRuntime _openRow;
+        private static RecipeDropdownRuntime _sharedDropdown;
         private static CraftUIRunner _runner;
+
+
+
         private static Coroutine _activeBuildRoutine;
         private static Coroutine _activeDropdownRoutine;
-        private static RecipeDropdownRuntime _sharedDropdown;
+
+        private static Button _globalCraftButton;
+        private static TextMeshProUGUI _globalCraftButtonText;
+        private static Image _globalCraftButtonImage;
+        private static PathRowRuntime _selectedPathUI;
+        private static RecipeChain _selectedChainData;
 
         // ---------------- Layout constants (normalized) ----------------
         private static float _panelWidth;
@@ -66,7 +76,6 @@ namespace CookBook
         internal const float textSizeNorm = 0.0383386581f;
 
         // ----- PathsContainer sizing -----
-        private const float PathsContainerVerticalPaddingNorm = 0.0f;
         private const float PathsContainerLeftPaddingNorm = 0.0181818182f;
         private const float PathsContainerRightPaddingNorm = 0.0181818182f;
         private const int PathsContainerMaxVisibleRows = 4;
@@ -82,6 +91,9 @@ namespace CookBook
         private const float IngredientHeightNorm = 0.0670926518f;
         private const float _IngredientStackSizeTextHeightPx = 10f;
         private const float _StackMargin = 2f;
+
+        //----- Confirmation -------
+        private const float FooterHeightNorm = 0.05f;
 
         //==================== LifeCycle ====================
         internal static void Init(ManualLogSource log)
@@ -247,7 +259,8 @@ namespace CookBook
             _panelWidth = cbRT.rect.width;
             _panelHeight = cbRT.rect.height;
 
-            // TODO: set up timer for perf analysis here
+            // TODO: perf analysis
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             CookBookSkeleton(cbRT);
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();
@@ -255,6 +268,8 @@ namespace CookBook
             BuildPathRowTemplate();
             BuildSharedDropdown();
             //ending here
+            sw.Stop();
+            _log.LogInfo($"CraftUI: Skeleton & Templates built in {sw.ElapsedMilliseconds}ms");
 
             if (_lastCraftables != null && _lastCraftables.Count > 0)
             {
@@ -270,10 +285,34 @@ namespace CookBook
                 _cookbookRoot = null;
                 _log.LogInfo("CraftUI.Detach: CookBook panel destroyed.");
             }
-
+            if (_globalCraftButton != null)
+            {
+                _globalCraftButton.onClick.RemoveAllListeners();
+            }
             _currentController = null;
             _skeletonBuilt = false;
             _recipeListContent = null;
+        }
+
+        internal static void CloseCraftPanel(CraftingController specificController = null)
+        {
+            var target = specificController ? specificController : _currentController;
+
+            if (!target)
+            {
+                return;
+            }
+
+            var openPanels = UnityEngine.Object.FindObjectsOfType<CraftingPanel>();
+
+            foreach (var panel in openPanels)
+            {
+                if (panel.craftingController == target)
+                {
+                    UnityEngine.Object.Destroy(panel.gameObject);
+                    return;
+                }
+            }
         }
 
         internal static void Shutdown()
@@ -283,6 +322,93 @@ namespace CookBook
         }
 
         //==================== Runtimes ====================
+        internal sealed class RecipeRowRuntime : MonoBehaviour
+        {
+            public CraftPlanner.CraftableEntry Entry;
+
+            public RectTransform RowTransform;
+            public LayoutElement RowLayoutElement;
+            public RectTransform RowTop;
+            public Button RowTopButton;
+            public TextMeshProUGUI ArrowText;
+
+            public RectTransform DropdownMountPoint;
+            public LayoutElement DropdownLayoutElement;
+
+            public Image ResultIcon;
+            public TextMeshProUGUI ResultStackText;
+            public TextMeshProUGUI ItemLabel;
+            public TextMeshProUGUI DepthText;
+            public TextMeshProUGUI PathsText;
+
+            public bool IsExpanded;
+            public float CollapsedHeight;
+        }
+
+        internal sealed class PathRowRuntime : MonoBehaviour,
+            UnityEngine.EventSystems.IPointerEnterHandler,
+            UnityEngine.EventSystems.IPointerExitHandler,
+            UnityEngine.EventSystems.IPointerClickHandler
+        {
+            public RecipeRowRuntime OwnerRow;
+            public RecipeChain Chain;
+
+            public Image BackgroundImage;
+            public Image HighlightImage;
+
+            private bool _isSelected;
+
+            public void Init(RecipeRowRuntime owner, RecipeChain chain)
+            {
+                OwnerRow = owner;
+                Chain = chain;
+                _isSelected = false;
+                UpdateVisuals(false);
+            }
+
+            public void SetSelected(bool selected)
+            {
+                _isSelected = selected;
+                UpdateVisuals(false);
+            }
+
+            public void OnPointerClick(UnityEngine.EventSystems.PointerEventData eventData)
+            {
+                CraftUI.OnPathSelected(this);
+            }
+
+            public void OnPointerEnter(UnityEngine.EventSystems.PointerEventData eventData)
+            {
+                if (!_isSelected) UpdateVisuals(isHovered: true);
+            }
+
+            public void OnPointerExit(UnityEngine.EventSystems.PointerEventData eventData)
+            {
+                if (!_isSelected) UpdateVisuals(isHovered: false);
+            }
+
+            private void UpdateVisuals(bool isHovered)
+            {
+                if (!HighlightImage || !BackgroundImage) return;
+
+                if (_isSelected)
+                {
+                    HighlightImage.color = new Color32(255, 255, 255, 255);
+                    BackgroundImage.color = new Color32(30, 30, 30, 100);
+                }
+                else if (isHovered)
+                {
+                    HighlightImage.color = new Color32(255, 196, 0, 100);
+                    BackgroundImage.color = new Color32(60, 60, 60, 150);
+                }
+                else
+                {
+                    HighlightImage.color = Color.clear;
+                    BackgroundImage.color = new Color32(5, 5, 5, 50);
+                }
+            }
+        }
+
         private class NestedScrollRect : ScrollRect
         {
             public ScrollRect ParentScroll;
@@ -311,29 +437,6 @@ namespace CookBook
                     base.OnScroll(data);
                 }
             }
-        }
-
-        private sealed class RecipeRowRuntime : MonoBehaviour
-        {
-            public CraftPlanner.CraftableEntry Entry;
-
-            public RectTransform RowTransform;
-            public LayoutElement RowLayoutElement;
-            public RectTransform RowTop;
-            public Button RowTopButton;
-            public TextMeshProUGUI ArrowText;
-
-            public RectTransform DropdownMountPoint;
-            public LayoutElement DropdownLayoutElement;
-
-            public Image ResultIcon;
-            public TextMeshProUGUI ResultStackText;
-            public TextMeshProUGUI ItemLabel;
-            public TextMeshProUGUI DepthText;
-            public TextMeshProUGUI PathsText;
-
-            public bool IsExpanded;
-            public float CollapsedHeight;
         }
 
         private sealed class CraftUIRunner : MonoBehaviour { }
@@ -371,7 +474,7 @@ namespace CookBook
                     ScrollRect.verticalNormalizedPosition = 1f;
                 }
 
-                PopulateDropdown(Content, owner.Entry);
+                PopulateDropdown(Content, owner);
             }
             public void Close()
             {
@@ -430,10 +533,13 @@ namespace CookBook
             float padBottomPx = CookBookPanelPaddingBottomNorm * _panelHeight;
             float padLeftPx = CookBookPanelPaddingLeftNorm * _panelWidth;
             float padRightPx = CookBookPanelPaddingRightNorm * _panelWidth;
+
             float spacingPx = CookBookPanelElementSpacingNorm * _panelHeight;
             float searchBarHeightPx = SearchBarHeightNorm * _panelHeight;
+            float footerHeightPx = FooterHeightNorm * _panelHeight;
+
             float innerHeight = _panelHeight - padTopPx - padBottomPx;
-            float recipeListHeightPx = innerHeight - searchBarHeightPx - spacingPx;
+            float recipeListHeightPx = innerHeight - searchBarHeightPx - footerHeightPx - (spacingPx * 2);
 
             int recipeListVertPadPx = Mathf.RoundToInt(RecipeListVerticalPaddingNorm * _panelHeight);
             if (recipeListHeightPx < 0f) recipeListHeightPx = 0f;
@@ -458,7 +564,6 @@ namespace CookBook
             searchRect.offsetMin = currentMin;
             searchRect.offsetMax = currentMax;
 
-            //---------------------- SearchBar Internals ----------------------
             GameObject inputGO = CreateUIObject("SearchInput", typeof(RectTransform), typeof(Image), typeof(TMP_InputField));
 
             var inputRect = inputGO.GetComponent<RectTransform>();
@@ -473,7 +578,6 @@ namespace CookBook
 
             bgImage.color = new Color(0f, 0f, 0f, 0.4f);
 
-            //---------------- Setup Text Fields ----------------
             GameObject textAreaGO = CreateUIObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
 
             var textAreaRT = textAreaGO.GetComponent<RectTransform>();
@@ -514,13 +618,60 @@ namespace CookBook
             placeholderTMP.color = new Color(1f, 1f, 1f, 0.5f);
             placeholderTMP.raycastTarget = false;
 
-            //---------------- Wire TMP_InputField ----------------
             _searchInputField.textViewport = textAreaRT;
             _searchInputField.textComponent = textTMP;
             _searchInputField.placeholder = placeholderTMP;
             _searchInputField.onValueChanged.AddListener(OnSearchTextChanged);
 
             AddBorder(inputRect, new Color32(209, 209, 210, 200), bottom: Mathf.Max(1f, SearchBarBottomBorderThicknessNorm * _panelHeight));
+
+            // ------------------------ Global Craft Button) ------------------------
+            GameObject footerGO = CreateUIObject("Footer", typeof(RectTransform));
+            var footerRT = footerGO.GetComponent<RectTransform>();
+
+            footerRT.SetParent(cookbookRoot, false);
+            footerRT.anchorMin = new Vector2(0f, 0f);
+            footerRT.anchorMax = new Vector2(1f, 0f);
+            footerRT.pivot = new Vector2(0.5f, 0f);
+
+            footerRT.sizeDelta = new Vector2(0f, footerHeightPx);
+            footerRT.anchoredPosition = new Vector2(0f, padBottomPx);
+
+            footerRT.offsetMin = new Vector2(padLeftPx, footerRT.offsetMin.y);
+            footerRT.offsetMax = new Vector2(-padRightPx, footerRT.offsetMax.y);
+
+            GameObject craftBtnGO = CreateUIObject("GlobalCraftButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            var craftBtnRT = craftBtnGO.GetComponent<RectTransform>();
+            var craftBtnImg = craftBtnGO.GetComponent<Image>();
+            var craftBtn = craftBtnGO.GetComponent<Button>();
+
+            craftBtnRT.SetParent(footerRT, false);
+            craftBtnRT.anchorMin = Vector2.zero;
+            craftBtnRT.anchorMax = Vector2.one;
+            craftBtnRT.sizeDelta = Vector2.zero;
+
+            craftBtnImg.color = new Color32(40, 40, 40, 255); // Default Disabled Gray
+            craftBtn.interactable = false; // Start Disabled
+
+            var btnTextGO = CreateUIObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+            var btnTextRT = btnTextGO.GetComponent<RectTransform>();
+            var btnTextTMP = btnTextGO.GetComponent<TextMeshProUGUI>();
+
+            btnTextRT.SetParent(craftBtnRT, false);
+            btnTextRT.anchorMin = Vector2.zero;
+            btnTextRT.anchorMax = Vector2.one;
+
+            btnTextTMP.text = "select a recipe";
+            btnTextTMP.alignment = TextAlignmentOptions.Center;
+            btnTextTMP.fontSize = footerHeightPx * 0.5f;
+            btnTextTMP.color = new Color32(100, 100, 100, 255); // Dim text
+
+            _globalCraftButton = craftBtn;
+            _globalCraftButtonText = btnTextTMP;
+            _globalCraftButtonImage = craftBtnImg;
+
+            _globalCraftButton.onClick.AddListener(OnGlobalCraftButtonClicked);
+
             //------------------------ RecipeListContainer ------------------------
             GameObject listGO = CreateUIObject("RecipeListContainer", typeof(RectTransform), typeof(ScrollRect));
 
@@ -691,16 +842,23 @@ namespace CookBook
             return rowGO;
         }
 
-        private static GameObject CreatePathRow(RectTransform parent, RecipeChain chain)
+        private static GameObject CreatePathRow(RectTransform parent, RecipeChain chain, RecipeRowRuntime owner)
         {
             if (_pathRowTemplate == null) return null;
 
-            var debugContents = new List<string>();
-
             GameObject pathRowGO = UnityEngine.Object.Instantiate(_pathRowTemplate, parent);
             pathRowGO.name = "PathRow";
-            pathRowGO.layer = LayerMask.NameToLayer("UI");
             pathRowGO.SetActive(true);
+
+            var runtime = pathRowGO.GetComponent<PathRowRuntime>();
+            if (runtime != null)
+            {
+                runtime.Init(owner, chain);
+            }
+            else
+            {
+                _log.LogError("PathRowTemplate missing PathRowRuntime component.");
+            }
 
             if (chain.TotalItemCost != null)
             {
@@ -709,20 +867,11 @@ namespace CookBook
                     int count = chain.TotalItemCost[i];
                     if (count <= 0) continue;
 
-                    // TODO: remove debug
-                    var def = ItemCatalog.GetItemDef((ItemIndex)i);
-                    string name = def != null ? def.name : $"ItemIdx_{i}";
-                    debugContents.Add($"{name} (x{count})");
-
                     Sprite icon = GetItemIcon((ItemIndex)i);
 
                     if (icon != null)
                     {
                         CreateIngredientSlot(pathRowGO.transform, icon, count);
-                    }
-                    else
-                    {
-                        _log.LogDebug($"Icon was null for {name}");
                     }
                 }
             }
@@ -734,24 +883,14 @@ namespace CookBook
                     int count = chain.TotalEquipmentCost[i];
                     if (count <= 0) continue;
 
-                    // TODO: remove debug
-                    var def = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)i);
-                    string name = def != null ? def.name : $"EquipIdx_{i}";
-                    debugContents.Add($"{name} (x{count})");
-
                     Sprite icon = GetEquipmentIcon((EquipmentIndex)i);
 
                     if (icon != null)
                     {
                         CreateIngredientSlot(pathRowGO.transform, icon, count);
                     }
-                    else
-                    {
-                        _log.LogDebug($"Icon was null for {name}");
-                    }
                 }
             }
-            _log.LogInfo($"[UI DEBUG] Rendering PathRow: {string.Join(", ", debugContents)}");
             return pathRowGO;
         }
 
@@ -837,11 +976,10 @@ namespace CookBook
             rowLE.flexibleWidth = 1f;
 
             // ---------------- RowTop ----------------
-            GameObject rowTopGO = CreateUIObject("RowTop", typeof(RectTransform), typeof(Image), typeof(Button), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+            GameObject rowTopGO = CreateUIObject("RowTop", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
 
             var rowTopRT = rowTopGO.GetComponent<RectTransform>();
             var rowTopImg = rowTopGO.GetComponent<Image>();
-            var rowTopH = rowTopGO.GetComponent<HorizontalLayoutGroup>();
             var rowTopLE = rowTopGO.GetComponent<LayoutElement>();
 
             rowTopRT.SetParent(rowRT, false);
@@ -854,30 +992,17 @@ namespace CookBook
             rowTopImg.color = new Color(0f, 0f, 0f, 0f);
             rowTopImg.raycastTarget = true;
 
-            rowTopH.spacing = elementSpacingPx;
-            rowTopH.childAlignment = TextAnchor.MiddleLeft;
-            rowTopH.childControlWidth = true;
-            rowTopH.childControlHeight = true;
-            rowTopH.childForceExpandWidth = false;
-            rowTopH.childForceExpandHeight = true;
-            rowTopH.padding = new RectOffset(
-                0,
-                0,
-                Mathf.RoundToInt(topPadPx),
-                Mathf.RoundToInt(bottomPadPx)
-            );
-
             // ---------------- DropDown ----------------
-            GameObject dropGO = CreateUIObject("DropDown", typeof(RectTransform), typeof(LayoutElement));
+            GameObject dropGO = CreateUIObject("DropDown", typeof(RectTransform));
 
             var dropRT = dropGO.GetComponent<RectTransform>();
-            var dropLE = dropGO.GetComponent<LayoutElement>();
 
             dropRT.SetParent(rowTopRT, false);
-
-            dropLE.minWidth = innerHeight;
-            dropLE.preferredWidth = innerHeight;
-            dropLE.flexibleWidth = 0f;
+            dropRT.anchorMin = new Vector2(0f, 0.5f);
+            dropRT.anchorMax = new Vector2(0f, 0.5f);
+            dropRT.pivot = new Vector2(0f, 0.5f);
+            dropRT.sizeDelta = new Vector2(innerHeight, innerHeight);
+            dropRT.anchoredPosition = Vector2.zero;
 
             GameObject arrowGO = CreateUIObject("Arrow", typeof(RectTransform), typeof(TextMeshProUGUI));
 
@@ -906,18 +1031,31 @@ namespace CookBook
             var slotRT = slotGO.GetComponent<RectTransform>();
             slotRT.SetParent(rowTopRT, false);
 
+            float slotX = innerHeight + elementSpacingPx;
+
+            slotRT.anchorMin = new Vector2(0f, 0.5f);
+            slotRT.anchorMax = new Vector2(0f, 0.5f);
+            slotRT.pivot = new Vector2(0f, 0.5f);
+            slotRT.sizeDelta = new Vector2(innerHeight, innerHeight);
+            slotRT.anchoredPosition = new Vector2(slotX, 0f);
+
             // ---------------- Item Label ----------------
-            GameObject labelGO = CreateUIObject("ItemLabel", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+            GameObject labelGO = CreateUIObject("ItemLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
 
             var labelRT = labelGO.GetComponent<RectTransform>();
             var labelTMP = labelGO.GetComponent<TextMeshProUGUI>();
-            var labelLE = labelGO.GetComponent<LayoutElement>();
 
             labelRT.SetParent(rowTopRT, false);
 
-            labelLE.minWidth = 0f;
-            labelLE.preferredWidth = 0f;
-            labelLE.flexibleWidth = 1f;
+            float labelLeftOffset = slotX + innerHeight + elementSpacingPx;
+            float labelRightOffset = -(metaWidthPx + elementSpacingPx);
+
+            labelRT.anchorMin = new Vector2(0f, 0.5f);
+            labelRT.anchorMax = new Vector2(1f, 0.5f);
+            labelRT.pivot = new Vector2(0.5f, 0.5f);
+
+            labelRT.offsetMin = new Vector2(labelLeftOffset, -innerHeight * 0.5f);
+            labelRT.offsetMax = new Vector2(labelRightOffset, innerHeight * 0.5f);
 
             labelTMP.text = "NAME";
             labelTMP.fontSize = textSize;
@@ -928,29 +1066,53 @@ namespace CookBook
             labelTMP.raycastTarget = false;
 
             // ---------------- MetaData ----------------
-            GameObject metaGO = CreateUIObject("MetaData", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+            GameObject metaGO = CreateUIObject("MetaData", typeof(RectTransform));
 
             var metaRT = metaGO.GetComponent<RectTransform>();
-            var metaV = metaGO.GetComponent<VerticalLayoutGroup>();
-            var metaLE = metaGO.GetComponent<LayoutElement>();
 
             metaRT.SetParent(rowTopRT, false);
 
-            metaLE.preferredWidth = metaWidthPx;
-            metaLE.minWidth = metaWidthPx;
-            metaLE.flexibleWidth = 0f;
+            metaRT.anchorMin = new Vector2(1f, 0.5f);
+            metaRT.anchorMax = new Vector2(1f, 0.5f);
+            metaRT.pivot = new Vector2(1f, 0.5f);
+            metaRT.sizeDelta = new Vector2(metaWidthPx, innerHeight);
+            metaRT.anchoredPosition = Vector2.zero;
 
-            metaV.spacing = metaSpacingPx;
-            metaV.childAlignment = TextAnchor.MiddleRight;
-            metaV.childForceExpandHeight = false;
-            metaV.childControlWidth = true;
-            metaV.childControlHeight = true;
+            float halfGap = metaSpacingPx / 2f;
 
             var depthGO = CreateUIObject("MinimumDepth", typeof(RectTransform), typeof(TextMeshProUGUI));
-            SetupMetaDataText(depthGO, metaRT, "Depth: 0");
+            var depthRT = depthGO.GetComponent<RectTransform>();
+            var depthTMP = depthGO.GetComponent<TextMeshProUGUI>();
+
+            depthRT.SetParent(metaRT, false);
+            depthRT.anchorMin = new Vector2(1f, 0.5f);
+            depthRT.anchorMax = new Vector2(1f, 0.5f);
+            depthRT.pivot = new Vector2(1f, 0f);
+            depthRT.anchoredPosition = new Vector2(0f, halfGap);
+            depthRT.sizeDelta = new Vector2(metaWidthPx, 0f);
+
+            depthTMP.text = "Depth: 0";
+            depthTMP.fontSize = 16f;
+            depthTMP.alignment = TextAlignmentOptions.BottomRight;
+            depthTMP.color = Color.white;
+            depthTMP.raycastTarget = false;
 
             var pathsGO = CreateUIObject("AvailablePaths", typeof(RectTransform), typeof(TextMeshProUGUI));
-            SetupMetaDataText(pathsGO, metaRT, "Paths: 0");
+            var pathsRT = pathsGO.GetComponent<RectTransform>();
+            var pathsTMP = pathsGO.GetComponent<TextMeshProUGUI>();
+
+            pathsRT.SetParent(metaRT, false);
+            pathsRT.anchorMin = new Vector2(1f, 0.5f);
+            pathsRT.anchorMax = new Vector2(1f, 0.5f);
+            pathsRT.pivot = new Vector2(1f, 1f); // Top-Right
+            pathsRT.anchoredPosition = new Vector2(0f, -halfGap); // Shift Down
+            pathsRT.sizeDelta = new Vector2(metaWidthPx, 0f);
+
+            pathsTMP.text = "Paths: 0";
+            pathsTMP.fontSize = 16f;
+            pathsTMP.alignment = TextAlignmentOptions.TopRight;
+            pathsTMP.color = Color.white;
+            pathsTMP.raycastTarget = false;
 
             AddBorder(rowTopRT, new Color32(209, 209, 210, 255), 1f, 1f, 0f, 0f);
 
@@ -984,8 +1146,8 @@ namespace CookBook
             runtime.ResultIcon = slotGO.transform.Find("Icon").GetComponent<Image>();
             runtime.ResultStackText = slotGO.transform.Find("StackText").GetComponent<TextMeshProUGUI>();
             runtime.ItemLabel = labelTMP;
-            runtime.DepthText = depthGO.GetComponent<TextMeshProUGUI>();
-            runtime.PathsText = pathsGO.GetComponent<TextMeshProUGUI>();
+            runtime.DepthText = depthTMP;
+            runtime.PathsText = pathsTMP;
 
             runtime.CollapsedHeight = rowRT.sizeDelta.y;
             runtime.IsExpanded = false;
@@ -1009,12 +1171,13 @@ namespace CookBook
             int leftPadPx = Mathf.RoundToInt(PathRowLeftPaddingNorm * _panelWidth);
             int rightPadPx = Mathf.RoundToInt(PathRowRightPaddingNorm * _panelWidth);
 
-            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(HorizontalLayoutGroup), typeof(PathRowRuntime));
 
             var rowRT = (RectTransform)rowGO.transform;
             var rowLE = rowGO.GetComponent<LayoutElement>();
             var hlg = rowGO.GetComponent<HorizontalLayoutGroup>();
             var rowImg = rowGO.GetComponent<Image>();
+            var runtime = rowGO.GetComponent<PathRowRuntime>();
 
             rowRT.SetParent(_cookbookRoot.transform, false);
             rowGO.SetActive(false);
@@ -1039,6 +1202,25 @@ namespace CookBook
             hlg.padding = new RectOffset(leftPadPx, rightPadPx, 0, 0);
 
             rowImg.color = new Color32(5, 5, 5, 50);
+            runtime.BackgroundImage = rowImg;
+
+            GameObject highlightGO = CreateUIObject("Highlight", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            var highlightRT = highlightGO.GetComponent<RectTransform>();
+            var highlightImg = highlightGO.GetComponent<Image>();
+            var highlightLE = highlightGO.GetComponent<LayoutElement>();
+
+            highlightLE.ignoreLayout = true;
+
+            highlightRT.SetParent(rowRT, false);
+            highlightRT.anchorMin = Vector2.zero;
+            highlightRT.anchorMax = Vector2.one;
+            highlightRT.offsetMin = Vector2.zero;
+            highlightRT.offsetMax = Vector2.zero;
+
+            highlightImg.color = Color.clear;
+            highlightImg.raycastTarget = false;
+
+            runtime.HighlightImage = highlightImg;
 
             AddBorder(rowRT, new Color32(209, 209, 210, 255), top: 1f, bottom: 1f);
             _pathRowTemplate = rowGO;
@@ -1110,6 +1292,13 @@ namespace CookBook
             vlg.childForceExpandHeight = false;
             vlg.childForceExpandWidth = true;
             vlg.spacing = PathsContainerSpacingNorm * _panelHeight;
+
+            vlg.padding = new RectOffset(
+                Mathf.RoundToInt(PathsContainerLeftPaddingNorm * _panelWidth),
+                Mathf.RoundToInt(PathsContainerRightPaddingNorm * _panelWidth),
+                0,
+                0
+            );
 
             contentGO.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
@@ -1189,7 +1378,7 @@ namespace CookBook
             var iconRT = (RectTransform)iconGO.transform;
             var iconImg = iconGO.GetComponent<Image>();
 
-            float insetPx = SlotHeightPx * 0.10f;
+            float insetPx = SlotHeightPx * 0.125f;
 
             iconRT.SetParent(slotRT, false);
             iconRT.anchorMin = Vector2.zero;
@@ -1211,7 +1400,7 @@ namespace CookBook
             stackRT.anchorMin = new Vector2(1f, 1f);
             stackRT.anchorMax = new Vector2(1f, 1f);
             stackRT.pivot = new Vector2(1f, 1f);
-            stackRT.anchoredPosition = new Vector2(-_StackMargin, -_StackMargin);
+            stackRT.anchoredPosition = Vector2.zero;
             stackRT.sizeDelta = Vector2.zero;
 
             stackTMP.text = string.Empty;
@@ -1219,6 +1408,9 @@ namespace CookBook
             stackTMP.alignment = TextAlignmentOptions.TopRight;
             stackTMP.color = Color.white;
             stackTMP.raycastTarget = false;
+
+            float extraRightPadding = _StackMargin;
+            stackTMP.margin = new Vector4(0f, _StackMargin, _StackMargin + extraRightPadding, 0f);
 
             stackGO.transform.SetAsLastSibling();
             stackLE.ignoreLayout = true;
@@ -1321,21 +1513,6 @@ namespace CookBook
             var go = new GameObject(name, components);
             go.layer = LayerMask.NameToLayer("UI");
             return go;
-        }
-
-        private static void SetupMetaDataText(GameObject obj, RectTransform parent, string text)
-        {
-            var rt = obj.GetComponent<RectTransform>();
-            var tmp = obj.GetComponent<TextMeshProUGUI>();
-
-            rt.SetParent(parent, false);
-            // VLG controls size/pos, no need for anchors
-
-            tmp.text = text;
-            tmp.fontSize = 16f;
-            tmp.alignment = TextAlignmentOptions.MidlineRight;
-            tmp.color = Color.white;
-            tmp.raycastTarget = false;
         }
 
         private static GameObject InstantiateLayer(GameObject template, Transform parent)
@@ -1471,7 +1648,45 @@ namespace CookBook
         }
 
 
-        //=========================== Events =========================== 
+        //=========================== Events ===========================
+        internal static void OnPathSelected(PathRowRuntime clickedPath)
+        {
+            if (_selectedPathUI == clickedPath)
+            {
+                DeselectCurrentPath();
+                return;
+            }
+
+            if (_selectedPathUI != null)
+            {
+                _selectedPathUI.SetSelected(false);
+            }
+
+            _selectedPathUI = clickedPath;
+            _selectedPathUI.SetSelected(true);
+
+            _selectedChainData = clickedPath.Chain;
+
+            if (_globalCraftButton)
+            {
+                _globalCraftButton.interactable = true;
+                _globalCraftButtonImage.color = new Color32(99, 219, 99, 255); // Chef Green
+                _globalCraftButtonText.text = "craft";
+                _globalCraftButtonText.color = Color.black;
+            }
+        }
+        private static void OnGlobalCraftButtonClicked()
+        {
+            if (_selectedChainData == null)
+            {
+                _log.LogWarning("Craft button clicked but no chain data selected.");
+                return;
+            }
+
+            _log.LogInfo($"[CraftUI] Requesting craft for chain with cost {_selectedChainData.TotalItemCost?.Length ?? 0}");
+
+            StateController.RequestCraft(_selectedChainData);
+        }
 
         private static void CraftablesForUIChanged(IReadOnlyList<CraftableEntry> craftables)
         {
@@ -1561,6 +1776,11 @@ namespace CookBook
                 _sharedDropdown.Close();
             }
 
+            if (_selectedPathUI != null && _selectedPathUI.OwnerRow == runtime)
+            {
+                DeselectCurrentPath();
+            }
+
             if (runtime.DropdownLayoutElement != null)
             {
                 runtime.DropdownLayoutElement.preferredHeight = 0f;
@@ -1612,9 +1832,12 @@ namespace CookBook
         }
 
         //=========================== Coroutines =========================== 
-        // TODO: set up timer for perf analysis here
+        // TODO: perf analysis
         internal static void PopulateRecipeList(IReadOnlyList<CraftableEntry> craftables)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+
             if (!_skeletonBuilt || _recipeListContent == null)
             {
                 return;
@@ -1631,11 +1854,11 @@ namespace CookBook
 
             if (_cookbookRoot.activeInHierarchy)
             {
-                _activeBuildRoutine = _runner.StartCoroutine(PopulateRoutine(craftables));
+                _activeBuildRoutine = _runner.StartCoroutine(PopulateRoutine(craftables, sw));
             }
         }
 
-        private static IEnumerator PopulateRoutine(IReadOnlyList<CraftableEntry> craftables)
+        private static IEnumerator PopulateRoutine(IReadOnlyList<CraftableEntry> craftables, System.Diagnostics.Stopwatch sw)
         {
             var vlg = _recipeListContent.GetComponent<VerticalLayoutGroup>();
             var canvasGroup = _recipeListContent.GetComponent<CanvasGroup>();
@@ -1648,6 +1871,14 @@ namespace CookBook
             {
                 vlg.enabled = false;
             }
+
+            CraftableEntry previousEntry = null;
+            if (_openRow != null)
+            {
+                previousEntry = _openRow.Entry;
+                CollapseRow(_openRow);
+            }
+            _openRow = null;
 
             foreach (Transform child in _recipeListContent)
             {
@@ -1664,31 +1895,45 @@ namespace CookBook
                     vlg.enabled = true;
                 }
                 _activeBuildRoutine = null;
+
+                sw.Stop();
+                _log.LogInfo($"CraftUI: PopulateRecipeList (Empty) completed in {sw.ElapsedMilliseconds}ms");
                 yield break;
             }
 
             int builtCount = 0;
+            RecipeRowRuntime rowToRestore = null;
 
             foreach (var entry in craftables)
             {
                 if (entry == null) continue;
 
                 var rowGO = CreateRecipeRow(_recipeListContent, entry);
+                var runtime = rowGO.GetComponent<RecipeRowRuntime>();
 
                 _recipeRowUIs.Add(new RecipeRowUI { Entry = entry, RowGO = rowGO });
 
-                builtCount++;
-
-                if (builtCount % 5 == 0)
+                if (previousEntry != null && rowToRestore == null)
                 {
-                    yield return null;
+                    if (AreEntriesSame(previousEntry, entry))
+                    {
+                        rowToRestore = runtime;
+                    }
                 }
+
+                builtCount++;
+                if (builtCount % 5 == 0) yield return null;
             }
 
             if (vlg)
             {
                 vlg.enabled = true;
                 LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeListContent);
+            }
+
+            if (rowToRestore != null)
+            {
+                ToggleRecipeRow(rowToRestore);
             }
 
             if (canvasGroup)
@@ -1698,10 +1943,12 @@ namespace CookBook
             }
 
             _activeBuildRoutine = null;
+
+            sw.Stop();
+            _log.LogInfo($"CraftUI: PopulateRecipeList (Empty) completed in {sw.ElapsedMilliseconds}ms");
         }
 
-
-        internal static void PopulateDropdown(RectTransform contentRoot, CraftableEntry entry)
+        internal static void PopulateDropdown(RectTransform contentRoot, RecipeRowRuntime owner)
         {
             if (_runner == null || !_cookbookRoot.activeInHierarchy)
             {
@@ -1713,10 +1960,10 @@ namespace CookBook
                 _runner.StopCoroutine(_activeDropdownRoutine);
             }
 
-            _activeDropdownRoutine = _runner.StartCoroutine(PopulateDropdownRoutine(contentRoot, entry));
+            _activeDropdownRoutine = _runner.StartCoroutine(PopulateDropdownRoutine(contentRoot, owner));
         }
 
-        private static IEnumerator PopulateDropdownRoutine(RectTransform contentRoot, CraftableEntry entry)
+        private static IEnumerator PopulateDropdownRoutine(RectTransform contentRoot, RecipeRowRuntime owner)
         {
             foreach (Transform child in contentRoot)
             {
@@ -1725,7 +1972,7 @@ namespace CookBook
 
             yield return null;
 
-            if (entry == null || entry.Chains == null)
+            if (owner.Entry == null || owner.Entry.Chains == null)
             {
                 _activeDropdownRoutine = null;
                 yield break;
@@ -1733,9 +1980,9 @@ namespace CookBook
 
             int builtCount = 0;
 
-            foreach (var chain in entry.Chains)
+            foreach (var chain in owner.Entry.Chains)
             {
-                CreatePathRow(contentRoot, chain);
+                CreatePathRow(contentRoot, chain, owner);
 
                 builtCount++;
 
@@ -1749,6 +1996,45 @@ namespace CookBook
         }
 
         // ========================= Helpers =========================
+        private static bool AreEntriesSame(CraftableEntry a, CraftableEntry b)
+        {
+            if (a == null || b == null) return false;
+
+            if (a.ResultKind != b.ResultKind) return false;
+
+            if (a.ResultCount != b.ResultCount) return false;
+
+            if (a.ResultKind == RecipeResultKind.Item)
+            {
+                return a.ResultItem == b.ResultItem;
+            }
+            else if (a.ResultKind == RecipeResultKind.Equipment)
+            {
+                return a.ResultEquipment == b.ResultEquipment;
+            }
+
+            return false;
+        }
+
+        private static void DeselectCurrentPath()
+        {
+            if (_selectedPathUI != null)
+            {
+                _selectedPathUI.SetSelected(false);
+                _selectedPathUI = null;
+            }
+
+            _selectedChainData = null;
+
+            if (_globalCraftButton)
+            {
+                _globalCraftButton.interactable = false;
+                _globalCraftButtonImage.color = new Color32(40, 40, 40, 255);
+                _globalCraftButtonText.text = "select a recipe";
+                _globalCraftButtonText.color = new Color32(100, 100, 100, 255);
+            }
+        }
+
         private static bool EntryMatchesSearch(CraftableEntry entry, string term)
         {
             if (string.IsNullOrEmpty(term))
