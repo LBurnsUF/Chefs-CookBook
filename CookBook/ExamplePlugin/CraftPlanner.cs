@@ -19,6 +19,11 @@ namespace CookBook
         private int _maxDepth;
         private readonly ManualLogSource _log;
 
+        private int[] _bufExternalItems;
+        private int[] _bufExternalEquip;
+        private int[] _bufCurrentItems;
+        private int[] _bufCurrentEquip;
+
         // Lookup tables
         private readonly Dictionary<ResultKey, List<ChefRecipe>> _recipesByResult = new(); // Recipes grouped by result (item/equipment)
         private readonly Dictionary<ResultKey, PlanEntry> _plans = new();
@@ -121,12 +126,9 @@ namespace CookBook
         {
             stack.Clear();
             var currentChain = new List<ChefRecipe>();
-            var validChains = new List<RecipeChain>();
 
-            DFS(target, target, 0, currentChain, stack, validChains);
 
-            plan.Chains.Clear();
-            plan.Chains.AddRange(validChains);
+            DFS(target, target, 0, currentChain, stack, plan);
         }
 
         // TODO: modify cycle prevention logic to allow certain types of cyclic crafts to occur, like if the user wants more of a given color of scrap, since the inputs generally require at least 1 of the inputted scrap.
@@ -136,7 +138,7 @@ namespace CookBook
            int depth,
            List<ChefRecipe> chain,
            HashSet<ResultKey> stack,
-           List<RecipeChain> validChains)
+           PlanEntry plan)
         {
             if (depth >= _maxDepth)
             {
@@ -164,7 +166,7 @@ namespace CookBook
 
                 chain.Add(recipe);
 
-                TryFinalizeChain(chain, validChains, rootTarget);
+                TryFinalizeChain(chain, plan, rootTarget);
 
                 if (!isRecursiveLoop)
                 {
@@ -174,7 +176,7 @@ namespace CookBook
                             ? new ResultKey(RecipeResultKind.Item, ingredient.Item, EquipmentIndex.None)
                             : new ResultKey(RecipeResultKind.Equipment, ItemIndex.None, ingredient.Equipment);
 
-                        DFS(subKey, rootTarget, depth + 1, chain, stack, validChains);
+                        DFS(subKey, rootTarget, depth + 1, chain, stack, plan);
                     }
                 }
                 chain.RemoveAt(chain.Count - 1);
@@ -189,7 +191,7 @@ namespace CookBook
         /// </summary>
         private void TryFinalizeChain(
             List<ChefRecipe> chain,
-            List<RecipeChain> validChains,
+            PlanEntry plan,
             ResultKey targetKey)
         {
             if (chain.Count == 0)
@@ -197,12 +199,11 @@ namespace CookBook
                 return;
             }
 
-            var externalItems = new int[_itemCount];
-            var externalEquip = new int[_equipmentCount];
+            var externalItems = GetCleanBuffer(ref _bufExternalItems, _itemCount);
+            var externalEquip = GetCleanBuffer(ref _bufExternalEquip, _equipmentCount);
+            var currentItems = GetCleanBuffer(ref _bufCurrentItems, _itemCount);
+            var currentEquip = GetCleanBuffer(ref _bufCurrentEquip, _equipmentCount);
             bool hasCost = false;
-
-            var currentItems = new int[_itemCount];
-            var currentEquip = new int[_equipmentCount];
 
             for (int s = chain.Count - 1; s >= 0; s--)
             {
@@ -278,40 +279,22 @@ namespace CookBook
                 return;
             }
 
-            bool isDuplicate = false;
+            long sig = RecipeChain.CalculateCanonicalSignature(chain);
 
-            var comparisonBuffer = new List<ChefRecipe>(chain.Count);
-            foreach (var valid in validChains)
+            if (plan.CanonicalSignatures.Contains(sig))
             {
-                if (valid.Steps.Count != chain.Count)
-                {
-                    continue; // if length doesnt match, early exit iteration for optimization, as this must not be a permutation
-                }
-
-                comparisonBuffer.Clear();
-                comparisonBuffer.AddRange(valid.Steps);
-
-                bool match = true;
-                foreach (var recipe in chain)
-                {
-                    if (!comparisonBuffer.Remove(recipe))
-                    {
-                        match = false;
-                        break;
-                    }
-                }
-
-                if (match)
-                {
-                    isDuplicate = true;
-                    break;
-                }
+                return;
             }
 
-            if (!isDuplicate)
-            {
-                validChains.Add(new RecipeChain(chain, externalItems, externalEquip));
-            }
+            int[] finalItems = new int[_itemCount];
+            Array.Copy(externalItems, finalItems, _itemCount);
+
+            int[] finalEquip = new int[_equipmentCount];
+            Array.Copy(externalEquip, finalEquip, _equipmentCount);
+            var newChain = new RecipeChain(chain, finalItems, finalEquip);
+
+            plan.CanonicalSignatures.Add(newChain.CanonicalSignature);
+            plan.Chains.Add(newChain);
         }
 
         // ------------------------ Runtime query API ---------------------------
@@ -435,6 +418,19 @@ namespace CookBook
             return false;
         }
 
+        private static int[] GetCleanBuffer(ref int[] buffer, int requiredSize)
+        {
+            if (buffer == null || buffer.Length != requiredSize)
+            {
+                buffer = new int[requiredSize];
+            }
+            else
+            {
+                Array.Clear(buffer, 0, buffer.Length);
+            }
+            return buffer;
+        }
+
         // ------------------------ Types ---------------------------
         /// <summary>
         /// Describes one craftable result (item or equipment) and the chains that are currently affordable from a given inventory snapshot.
@@ -474,7 +470,7 @@ namespace CookBook
                 _canonicalSignature = CalculateCanonicalSignature(Steps);
             }
 
-            private static long CalculateCanonicalSignature(IReadOnlyList<ChefRecipe> chain)
+            internal static long CalculateCanonicalSignature(IReadOnlyList<ChefRecipe> chain)
             {
                 if (chain == null || chain.Count == 0)
                 {
