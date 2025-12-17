@@ -5,7 +5,7 @@ using System;
 namespace CookBook
 {
     /// <summary>
-    /// Tracks local player's items and raises an event when they change
+    /// Tracks local player's items and raises an event when they change.
     /// </summary>
     internal static class InventoryTracker
     {
@@ -15,6 +15,8 @@ namespace CookBook
         private static bool _enabled;
         private static Inventory _localInventory;
         private static InventorySnapshot _snapshot;
+
+        public static int LastItemCountUsed { get; private set; }
 
         // Events
         /// <summary>
@@ -35,7 +37,7 @@ namespace CookBook
 
         //--------------------------------------- Status Control ----------------------------------------
         /// <summary>
-        /// Refreshes and binds to the localuser.
+        /// Refreshes binding and begins tracking localuser inventory.
         /// </summary>
         internal static void Enable()
         {
@@ -48,7 +50,7 @@ namespace CookBook
             _localInventory = null;
             _snapshot = default;
 
-            CharacterBody.onBodyStartGlobal += OnBodyStart; // subscribe for character initialization
+            CharacterBody.onBodyStartGlobal += OnBodyStart;
 
             if (TryBindFromExistingBodies())
             {
@@ -66,12 +68,12 @@ namespace CookBook
                 return;
 
             _enabled = false;
-            CharacterBody.onBodyStartGlobal -= OnBodyStart; // remove subscription to character initialization
+            CharacterBody.onBodyStartGlobal -= OnBodyStart;
 
             // clear stale user
             if (_localInventory != null)
             {
-                _localInventory.onInventoryChanged -= OnLocalInventoryChanged; // remove subscription to local inventory updates
+                _localInventory.onInventoryChanged -= OnLocalInventoryChanged;
                 _localInventory = null;
             }
             _snapshot = default;
@@ -133,24 +135,17 @@ namespace CookBook
             // iterate over all existing bodies to find local player
             foreach (var body in CharacterBody.readOnlyInstancesList)
             {
-                if (!body || body.inventory == null)
-                    continue;
+                if (!body || body.inventory == null) continue;
 
                 var master = body.master;
-                if (!master)
-                    continue;
+                if (!master) continue;
 
                 var pcmc = master.playerCharacterMasterController;
-                if (!pcmc)
-                    continue;
+                if (!pcmc) continue;
 
                 var networkUser = pcmc.networkUser;
-                if (!networkUser)
-                    continue;
-
-                // Is this body controlled by our local user?
-                if (networkUser.localUser != localUser)
-                    continue;
+                if (!networkUser) continue;
+                if (networkUser.localUser != localUser) continue;
 
                 _log.LogInfo($"InventoryTracker.TryBindFromExistingBodies(): late binding to body {body.name}.");
 
@@ -175,9 +170,6 @@ namespace CookBook
         }
 
         //--------------------------------------- Event Logic ----------------------------------------
-        /// <summary>
-        /// Called by RoR2 whenever any body's inventory changes 
-        /// </summary>
         private static void OnLocalInventoryChanged()
         {
             if (!_enabled || _localInventory == null)
@@ -192,6 +184,7 @@ namespace CookBook
         private static void SnapshotFromInventory(Inventory inv)
         {
             int itemLen = ItemCatalog.itemCount;
+            LastItemCountUsed = itemLen;
             int equipLen = EquipmentCatalog.equipmentCount;
             int totalLen = itemLen + equipLen;
 

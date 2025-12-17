@@ -68,6 +68,16 @@ namespace CookBook
         }
 
         /// <summary>
+        /// Forces a complete rebuild of the recipe cache.
+        /// Useful if ItemCatalog/EquipmentCatalog shifts at runtime.
+        /// </summary>
+        internal static void Rebuild()
+        {
+            _log.LogWarning("RecipeProvider: ForceRebuild requested. Re-indexing all recipes...");
+            BuildRecipes();
+        }
+
+        /// <summary>
         /// Build the list of chef recipes from CraftableDef
         /// </summary>
         /// 
@@ -189,7 +199,6 @@ namespace CookBook
         }
     }
 
-    // TODO: add clean hashing
     /// <summary>ingredient entry</summary>
     internal readonly struct Ingredient
     {

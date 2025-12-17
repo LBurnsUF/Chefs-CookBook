@@ -136,9 +136,10 @@ namespace CookBook
 
         private static void OnInventoryChanged(int[] unifiedStacks)
         {
-            if (_planner == null)
+            if (InventoryTracker.LastItemCountUsed != _planner.SourceItemCount)
             {
-                _log.LogDebug("StateController.OnInventoryChanged: planner not assigned yet, ignoring.");
+                _log.LogWarning("Catalog Shift Detected, Rebuilding Recipes.");
+                RecipeProvider.Rebuild();
                 return;
             }
             _planner.ComputeCraftable(unifiedStacks);

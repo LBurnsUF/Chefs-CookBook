@@ -1,0 +1,10 @@
+{
+  "name": "CookBook",
+  "version_number": "1.1.0",
+  "website_url": "https://github.com/LBurnsUF/Chefs-CookBook",
+  "description": "",
+  "dependencies": [
+    "HookGenPatcher",
+    "BepInExPack"
+  ]
+}

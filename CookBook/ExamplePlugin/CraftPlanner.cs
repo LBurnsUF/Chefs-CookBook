@@ -2,9 +2,6 @@
 using RoR2;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using static CookBook.CraftPlanner;
 
 namespace CookBook
 {
@@ -13,6 +10,7 @@ namespace CookBook
     /// </summary>
     internal sealed class CraftPlanner
     {
+        public int SourceItemCount { get; }
         private readonly IReadOnlyList<ChefRecipe> _recipes;
         private readonly int _itemCount;
         private readonly int _totalDefCount;
@@ -46,6 +44,7 @@ namespace CookBook
             _itemCount = ItemCatalog.itemCount;
             _totalDefCount = _itemCount + EquipmentCatalog.equipmentCount;
             _log = log;
+            SourceItemCount = ItemCatalog.itemCount;
 
             RebuildAllPlans();
         }
@@ -157,7 +156,7 @@ namespace CookBook
 
             foreach (var recipe in options)
             {
-                if (IsCycle1Recipe(recipe)) // avoid pointless cycles that result in the input item
+                if (IsCycle1Recipe(recipe))
                 {
                     continue;
                 }

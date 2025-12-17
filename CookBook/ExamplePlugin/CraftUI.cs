@@ -3,9 +3,10 @@ using RoR2;
 using RoR2.UI;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
+using System.IO;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static CookBook.CraftPlanner;
 
@@ -29,17 +30,26 @@ namespace CookBook
         private static GameObject _ResultSlotTemplate;
 
         private static RecipeRowRuntime _openRow;
-        private static RecipeDropdownRuntime _sharedDropdown;
         private static CraftUIRunner _runner;
 
         private static Coroutine _activeBuildRoutine;
         private static Coroutine _activeDropdownRoutine;
+        private static RecipeDropdownRuntime _sharedDropdown;
+        private static RecipeRowRuntime _cachedDropdownOwner;
+
+        private static RectTransform _selectionReticle;
+        private static RectTransform _currentReticleTarget;
+        private static RectTransform _selectedAnchor;
+        private static PathRowRuntime _currentHoveredPath;
 
         private static Button _globalCraftButton;
         private static TextMeshProUGUI _globalCraftButtonText;
         private static Image _globalCraftButtonImage;
         private static PathRowRuntime _selectedPathUI;
         private static RecipeChain _selectedChainData;
+
+        private static Sprite _solidPointSprite;
+        private static Sprite _taperedGradientSprite;
 
         // ---------------- Layout constants ----------------
         private static float _panelWidth;
@@ -88,7 +98,8 @@ namespace CookBook
         //----- Ingredients -------
         private const float IngredientHeightNorm = 0.0670926518f;
         private const float _IngredientStackSizeTextHeightPx = 10f;
-        private const float _StackMargin = 2f;
+        private const float _IngredientStackMargin = 2f;
+        private const float _ResultStackMargin = 3f;
 
         //----- Confirmation -------
         private const float FooterHeightNorm = 0.05f;
@@ -104,17 +115,10 @@ namespace CookBook
         {
 
             _currentController = controller;
-            if (_cookbookRoot != null)
-            {
-                _log.LogDebug("CraftUI.Attach: already attached, skipping.");
-                return;
-            }
+            if (_cookbookRoot != null) return;
             var craftingPanel = UnityEngine.Object.FindObjectOfType<CraftingPanel>();
-            if (!craftingPanel)
-            {
-                _log.LogWarning("CraftUI.Attach: CraftingPanel not found; cannot attach UI.");
-                return;
-            }
+
+            if (!craftingPanel) return;
 
             // hierarchy pieces
             Transform bgContainerTr = craftingPanel.transform.Find("MainPanel/Juice/BGContainer");
@@ -126,53 +130,49 @@ namespace CookBook
             RectTransform submenuRect = bgContainerTr.Find("SubmenuContainer")?.GetComponent<RectTransform>();
             RectTransform invRect = bgContainerTr.Find("InventoryContainer")?.GetComponent<RectTransform>();
 
-            if (!labelRect)
-            {
-                _log.LogError("CraftUI.Attach: LabelContainer RectTransform not found; aborting border setup.");
-                return; // or just skip the border part
-            }
+            if (!labelRect) return;
 
             // Preserve current on-screen position
             labelRect.SetParent(bgMainRect, worldPositionStays: true);
 
             // base width references
-            float invBaseWidth = invRect ? invRect.rect.width : 0f;
-            float invBaseHeight = invRect ? invRect.rect.height : 0f;
-            float craftBaseWidth = craftBgRect ? craftBgRect.rect.width : 0;
-            float baseWidth = bgMainRect.rect.width;
-            float baseHeight = bgMainRect.rect.height;
-            float baseLabelWidth = labelRect.rect.width;
+            float invBaseWidth = RoundToEven(invRect ? invRect.rect.width : 0f);
+            float invBaseHeight = RoundToEven(invRect ? invRect.rect.height : 0f);
+            float craftBaseWidth = RoundToEven(craftBgRect ? craftBgRect.rect.width : 0);
+            float baseWidth = RoundToEven(bgMainRect.rect.width);
+            float baseHeight = RoundToEven(bgMainRect.rect.height);
+            float baseLabelWidth = RoundToEven(labelRect.rect.width);
 
             //==================== base UI scaling ====================
             var img = bgMainRect.GetComponent<Image>();
             var sprite = img ? img.sprite : null;
-            float ppu = sprite ? sprite.pixelsPerUnit : 1f;
-            float padLeft = sprite ? sprite.border.x / ppu : 0f;
-            float padRight = sprite ? sprite.border.z / ppu : 0f;
-            float padTop = sprite ? sprite.border.w / ppu : 0f;
-            float padBottom = sprite ? sprite.border.y / ppu : 0f;
+            float ppu = RoundToEven(sprite ? sprite.pixelsPerUnit : 1f);
+            float padLeft = RoundToEven(sprite ? sprite.border.x / ppu : 0f);
+            float padRight = RoundToEven(sprite ? sprite.border.z / ppu : 0f);
+            float padTop = RoundToEven(sprite ? sprite.border.w / ppu : 0f);
+            float padBottom = RoundToEven(sprite ? sprite.border.y / ppu : 0f);
             float padHorizontal = padLeft + padRight;
 
             // Widen BG
             float widthscale = 1.8f;
-            float newBgWidth = baseWidth * widthscale;
+            float newBgWidth = RoundToEven(baseWidth * widthscale);
 
             // ensure even label margins
             float innerWidth = baseWidth - padHorizontal;
-            float labelGap = (innerWidth - baseLabelWidth) * 0.5f;
+            float labelGap = RoundToEven((innerWidth - baseLabelWidth) * 0.5f);
             float newInnerWidth = newBgWidth - padHorizontal;
             float newLabelWidth = newInnerWidth - 2f * labelGap;
 
             // shrink vanilla ui margins
-            float invWidthNew = invBaseWidth * 0.88f;
-            float invHeightNew = invBaseHeight * 0.9f;
+            float invWidthNew = RoundToEven(invBaseWidth * 0.88f);
+            float invHeightNew = RoundToEven(invBaseHeight * 0.9f);
             float craftWidthNew = invWidthNew;
 
             // clamp cookbook width to 30% of total chef UI
-            float cookbookWidth = Mathf.Clamp(newBgWidth * 0.3f, 260f, newInnerWidth - invBaseWidth);
+            float cookbookWidth = RoundToEven(Mathf.Clamp(newBgWidth * 0.3f, 260f, newInnerWidth - invBaseWidth));
 
             // clamp gap between cookbook and crafting panel to 5% of the total width
-            float gap = Mathf.Clamp(newBgWidth * 0.05f, 20f, labelGap);
+            float gap = RoundToEven(Mathf.Clamp(newBgWidth * 0.05f, 20f, labelGap));
 
             // extend background and label
             bgRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, newBgWidth);
@@ -187,9 +187,9 @@ namespace CookBook
             AlignLabelVerticallyBetween(labelRect, bgMainRect, craftBgRect);
 
             // position craft+inventory block using left sideMargin
-            float craftWidth = craftBgRect.rect.width;
-            float sideMargin = (newInnerWidth - (craftWidth + gap + cookbookWidth)) * 0.5f;
-            float centerCraftPanel = -newInnerWidth * 0.5f + sideMargin + craftWidth * 0.5f;
+            float craftWidth = RoundToEven(craftBgRect.rect.width);
+            float sideMargin = RoundToEven((newInnerWidth - (craftWidth + gap + cookbookWidth)) * 0.5f);
+            float centerCraftPanel = RoundToEven(-newInnerWidth * 0.5f + sideMargin + craftWidth * 0.5f);
 
             // shift vanilla UI left
             var pos = craftBgRect.anchoredPosition;
@@ -218,10 +218,7 @@ namespace CookBook
             if (invRect)
             {
                 var b = RectTransformUtility.CalculateRelativeRectTransformBounds(bgContainerTr, invRect);
-                if (hasBounds)
-                {
-                    contentBounds.Encapsulate(b);
-                }
+                if (hasBounds) contentBounds.Encapsulate(b);
                 else
                 {
                     contentBounds = b;
@@ -229,11 +226,16 @@ namespace CookBook
                 }
             }
 
+
+            float boundsHeight = RoundToEven(contentBounds.size.y);
+            float boundsCenterY = RoundToEven(contentBounds.center.y);
+
             // create CookBook panel in the new right-hand strip
             _cookbookRoot = CreateUIObject("CookBookPanel", typeof(RectTransform), typeof(CraftUIRunner), typeof(Canvas), typeof(GraphicRaycaster));
 
             _runner = _cookbookRoot.GetComponent<CraftUIRunner>();
             var canvas = _cookbookRoot.GetComponent<Canvas>();
+            canvas.pixelPerfect = true;
             _cookbookRoot.GetComponent<GraphicRaycaster>();
             RectTransform cbRT = _cookbookRoot.GetComponent<RectTransform>();
 
@@ -242,36 +244,103 @@ namespace CookBook
             cbRT.anchorMax = new Vector2(1f, 0.5f);
             cbRT.pivot = new Vector2(1f, 0.5f);
 
-            cbRT.sizeDelta = new Vector2(cookbookWidth, contentBounds.size.y);
-
             /// ensure equal margins, same y position
-            cbRT.anchoredPosition = new Vector2(-sideMargin, contentBounds.center.y);
+            cbRT.sizeDelta = new Vector2(cookbookWidth, boundsHeight);
+            cbRT.anchoredPosition = new Vector2(-sideMargin, boundsCenterY);
 
             labelRect.GetComponent<Image>().enabled = false;
-            AddBorder(labelRect, new Color32(209, 209, 210, 255), 2f, 2f, 4f, 4f);
+            AddBorder(labelRect, new Color32(209, 209, 210, 255), 2f, 2f, 6f, 6f);
 
-            _log.LogDebug(
-                $"CraftUI.Attach: CookBook panel attached. baseWidth={baseWidth:F1}, newWidth={newBgWidth:F1}, cookbookWidth={cookbookWidth:F1}, invBaseWidth={invBaseWidth:F1}"
-            );
+            _log.LogDebug($"CraftUI.Attach: CookBook panel attached. baseWidth={baseWidth:F1}, newWidth={newBgWidth:F1}, cookbookWidth={cookbookWidth:F1}, invBaseWidth={invBaseWidth:F1}");
             _panelWidth = cbRT.rect.width;
             _panelHeight = cbRT.rect.height;
 
-            // TODO: perf analysis
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            PullChefIcon(craftingPanel);
             CookBookSkeleton(cbRT);
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();
             BuildRecipeRowTemplate();
             BuildPathRowTemplate();
             BuildSharedDropdown();
+            BuildSharedHoverRect();
             sw.Stop();
             _log.LogInfo($"CraftUI: Skeleton & Templates built in {sw.ElapsedMilliseconds}ms");
 
-            if (_lastCraftables != null && _lastCraftables.Count > 0)
+            if (_lastCraftables != null && _lastCraftables.Count > 0) PopulateRecipeList(_lastCraftables);
+        }
+
+        internal static void PullChefIcon(CraftingPanel craftingPanel)
+        {
+            if (craftingPanel == null) return;
+
+            Transform mainContainer = craftingPanel.transform.Find("MainPanel/Juice/BGContainer/BGMain/LabelContainer")?.GetComponent<RectTransform>();
+
+            if (mainContainer == null)
             {
-                PopulateRecipeList(_lastCraftables);
+                CookBook.Log.LogError("PullChefIcon: Main container not found.");
+                return;
+            }
+
+            int count = 0;
+            CookBook.Log.LogInfo("Starting recursive icon extraction...");
+
+            SearchAndExtract(mainContainer, "ChefUI_Asset", ref count);
+
+            CookBook.Log.LogInfo($"Icon extraction complete. Found and saved {count} assets.");
+        }
+
+        private static void SearchAndExtract(Transform parent, string baseName, ref int count)
+        {
+            foreach (Transform child in parent)
+            {
+                Image imageComponent = child.GetComponent<Image>();
+
+                if (imageComponent != null && imageComponent.sprite != null && imageComponent.sprite.texture != null)
+                {
+                    SaveImage(imageComponent, baseName, count);
+                    count++;
+                }
+                SearchAndExtract(child, baseName, ref count);
             }
         }
+
+        private static void SaveImage(Image image, string baseName, int index)
+        {
+            if (image == null || image.sprite == null || image.sprite.texture == null)
+            {
+                return;
+            }
+
+            Texture2D texture = image.sprite.texture;
+
+            try
+            {
+                byte[] bytes = texture.EncodeToPNG();
+
+                string fileName = $"{baseName}_{index}_{texture.width}x{texture.height}.png";
+                string path = System.IO.Path.Combine(
+                    BepInEx.Paths.PluginPath,
+                    "ExtractedAssets",
+                    fileName
+                );
+
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+
+                File.WriteAllBytes(path, bytes);
+                CookBook.Log.LogInfo($"Extracted icon to: {path}");
+            }
+            catch (UnityException ex)
+            {
+                // Handle non-readable texture errors gracefully
+                CookBook.Log.LogWarning($"Failed to extract {baseName}_{index}. Texture may not be readable. Error: {ex.Message}");
+            }
+            catch (System.Exception ex)
+            {
+                CookBook.Log.LogError($"General error during extraction: {ex.Message}");
+            }
+        }
+
 
         internal static void Detach()
         {
@@ -281,10 +350,8 @@ namespace CookBook
                 _cookbookRoot = null;
                 _log.LogInfo("CraftUI.Detach: CookBook panel destroyed.");
             }
-            if (_globalCraftButton != null)
-            {
-                _globalCraftButton.onClick.RemoveAllListeners();
-            }
+            if (_globalCraftButton != null) _globalCraftButton.onClick.RemoveAllListeners();
+
             _currentController = null;
             _skeletonBuilt = false;
             _recipeListContent = null;
@@ -294,10 +361,7 @@ namespace CookBook
         {
             var target = specificController ? specificController : _currentController;
 
-            if (!target)
-            {
-                return;
-            }
+            if (!target) return;
 
             var openPanels = UnityEngine.Object.FindObjectsOfType<CraftingPanel>();
 
@@ -318,6 +382,7 @@ namespace CookBook
         }
 
         //==================== Runtimes ====================
+
         internal sealed class RecipeRowRuntime : MonoBehaviour
         {
             public CraftPlanner.CraftableEntry Entry;
@@ -339,75 +404,154 @@ namespace CookBook
 
             public bool IsExpanded;
             public float CollapsedHeight;
+
+            private void OnDestroy()
+            {
+                if (RowTopButton != null)
+                {
+                    RowTopButton.onClick.RemoveAllListeners();
+                }
+                Entry = null;
+                if (_openRow == this) _openRow = null;
+            }
         }
 
-        internal sealed class PathRowRuntime : MonoBehaviour,
-            UnityEngine.EventSystems.IPointerEnterHandler,
-            UnityEngine.EventSystems.IPointerExitHandler,
-            UnityEngine.EventSystems.IPointerClickHandler
+        internal sealed class PathRowRuntime : MonoBehaviour
         {
-            public RecipeRowRuntime OwnerRow;
-            public RecipeChain Chain;
+            internal RecipeRowRuntime OwnerRow;
+            internal RecipeChain Chain;
+            internal Image BackgroundImage;
+            public RectTransform VisualRect;
+            public Button pathButton;
+            public EventTrigger buttonEvent;
+            private ColorFaderRuntime fader;
 
-            public Image BackgroundImage;
-            public Image HighlightImage;
+            private bool isSelected;
+            private bool isHovered;
 
-            private bool _isSelected;
+
+            private const float FadeDuration = 0.1f;
+
+            private static readonly Color Col_BG_Normal = new Color32(26, 26, 26, 50); // deselected color
+            private static readonly Color Col_BG_Active = new Color32(206, 198, 143, 200); // selected color
+            private static readonly Color Col_BG_Hover = new Color32(206, 198, 143, 75); // hover color
+
+            private void Awake()
+            {
+                if (pathButton == null)
+                {
+                    pathButton = GetComponent<Button>();
+                }
+                if (buttonEvent == null)
+                {
+                    buttonEvent = GetComponent<EventTrigger>();
+                }
+
+                if (pathButton != null)
+                {
+                    pathButton.onClick.AddListener(OnClicked);
+                }
+
+                EventTrigger.Entry entryEnter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+                entryEnter.callback.AddListener((data) => OnHighlightChanged(true));
+                buttonEvent.triggers.Add(entryEnter);
+                EventTrigger.Entry entryExit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+                entryExit.callback.AddListener((data) => OnHighlightChanged(false));
+                buttonEvent.triggers.Add(entryExit);
+
+                if (VisualRect == null)
+                {
+                    var visuals = transform.Find("Visuals");
+                    if (visuals != null) VisualRect = visuals.GetComponent<RectTransform>();
+                }
+
+                if (VisualRect != null)
+                {
+                    if (BackgroundImage == null) BackgroundImage = VisualRect.GetComponent<Image>();
+                    fader = VisualRect.GetComponent<ColorFaderRuntime>();
+                }
+            }
 
             public void Init(RecipeRowRuntime owner, RecipeChain chain)
             {
                 OwnerRow = owner;
                 Chain = chain;
-                _isSelected = false;
+                isSelected = false;
+                isHovered = false;
+
+                UpdateVisuals(true);
+            }
+
+            private void OnDestroy()
+            {
+                if (pathButton != null)
+                {
+                    pathButton.onClick.RemoveListener(OnClicked);
+                }
+
+                if (buttonEvent != null)
+                {
+                    buttonEvent.triggers.Clear();
+                }
+
+                if (_currentHoveredPath == this) _currentHoveredPath = null;
+                if (_selectedPathUI == this) _selectedPathUI = null;
+                OwnerRow = null;
+                Chain = null;
+            }
+
+            private void OnClicked()
+            {
+                CraftUI.OnPathSelected(this);
+            }
+
+            private void OnHighlightChanged(bool isHighlighted)
+            {
+                if (isHighlighted)
+                {
+                    isHovered = true;
+                    if (_currentHoveredPath == this) _currentHoveredPath = null;
+                    AttachReticleTo(VisualRect);
+                }
+                else
+                {
+                    isHovered = false;
+                    if (IsReticleAttachedTo(VisualRect)) RestoreReticleToSelection();
+                }
                 UpdateVisuals(false);
             }
 
             public void SetSelected(bool selected)
             {
-                _isSelected = selected;
-                UpdateVisuals(false);
-            }
-
-            public void OnPointerClick(UnityEngine.EventSystems.PointerEventData eventData)
-            {
-                CraftUI.OnPathSelected(this);
-            }
-
-            public void OnPointerEnter(UnityEngine.EventSystems.PointerEventData eventData)
-            {
-                if (!_isSelected) UpdateVisuals(isHovered: true);
-            }
-
-            public void OnPointerExit(UnityEngine.EventSystems.PointerEventData eventData)
-            {
-                if (!_isSelected) UpdateVisuals(isHovered: false);
-            }
-
-
-            // TODO: update hover coloring and figure out how to add a damn fade-in duration
-            private void UpdateVisuals(bool isHovered)
-            {
-                if (!HighlightImage || !BackgroundImage) return;
-
-                if (_isSelected)
+                if (isSelected != selected)
                 {
-                    HighlightImage.color = new Color32(255, 255, 255, 255);
-                    BackgroundImage.color = new Color32(30, 30, 30, 100);
+                    isSelected = selected;
+
+                    if (isSelected) CraftUI.AttachReticleTo(VisualRect);
+                    UpdateVisuals(false);
                 }
-                else if (isHovered)
-                {
-                    HighlightImage.color = new Color32(255, 196, 0, 100);
-                    BackgroundImage.color = new Color32(60, 60, 60, 150);
-                }
-                else
-                {
-                    HighlightImage.color = Color.clear;
-                    BackgroundImage.color = new Color32(5, 5, 5, 50);
-                }
+            }
+
+            private void UpdateVisuals(bool instant)
+            {
+                if (BackgroundImage == null) return;
+
+                Color targetColor;
+
+                if (isSelected) targetColor = Col_BG_Active;
+                else if (isHovered) targetColor = Col_BG_Hover;
+                else targetColor = Col_BG_Normal;
+
+                if (instant) BackgroundImage.color = targetColor;
+                else fader.CrossFadeColor(targetColor, FadeDuration, ignoreTimeScale: true);
+            }
+
+            private void OnEnable()
+            {
+                UpdateVisuals(true);
             }
         }
 
-        // TODO: update to allow clean top/bottom scroll, .99 cuts off bottom and .01 cuts off top slightly
         private class NestedScrollRect : ScrollRect
         {
             public ScrollRect ParentScroll;
@@ -416,25 +560,19 @@ namespace CookBook
             {
                 if (!this.IsActive()) return;
 
-                bool canScroll = content.rect.height > viewport.rect.height;
+                bool canScrollVertical = content.rect.height > viewport.rect.height;
+                if (!canScrollVertical)
+                {
+                    if (ParentScroll) ParentScroll.OnScroll(data);
+                    return;
+                }
 
-                if (!canScroll)
-                {
-                    if (ParentScroll) ParentScroll.OnScroll(data);
-                }
-                else if (data.scrollDelta.y > 0 && verticalNormalizedPosition >= 0.99f)
-                {
-                    if (ParentScroll) ParentScroll.OnScroll(data);
-                }
-                else if (data.scrollDelta.y < 0 && verticalNormalizedPosition <= 0.01f)
-                {
-                    if (ParentScroll) ParentScroll.OnScroll(data);
-                }
-                else
-                {
-                    // Otherwise, scroll normally
-                    base.OnScroll(data);
-                }
+                float deltaY = data.scrollDelta.y;
+                float currentPos = verticalNormalizedPosition;
+                const float boundaryThreshold = 0.001f;
+
+                if (ParentScroll && ((deltaY > 0 && currentPos >= (1f - boundaryThreshold)) || (deltaY < 0 && currentPos <= boundaryThreshold))) ParentScroll.OnScroll(data);
+                else base.OnScroll(data);
             }
         }
 
@@ -451,11 +589,6 @@ namespace CookBook
 
             public void OpenFor(RecipeRowRuntime owner)
             {
-                if (CurrentOwner != owner)
-                {
-                    Close();
-                }
-
                 CurrentOwner = owner;
                 gameObject.SetActive(true);
 
@@ -484,16 +617,19 @@ namespace CookBook
                     _activeDropdownRoutine = null;
                 }
 
-                if (CurrentOwner == null)
-                {
-                    return;
-                }
+                if (CurrentOwner == null) return;
 
                 SelectedPathIndex = -1;
                 transform.SetParent(_cookbookRoot.transform, false);
                 gameObject.SetActive(false);
                 CurrentOwner = null;
             }
+
+            private void OnDestroy()
+            {
+                CurrentOwner = null;
+            }
+
         }
 
         //==================== Cookbook Builders ====================
@@ -508,10 +644,7 @@ namespace CookBook
             }
 
             //------------------------ Border ------------------------
-            GameObject frameClone = UnityEngine.Object.Instantiate(
-                    UnityEngine.Object.FindObjectOfType<CraftingPanel>().transform.Find("MainPanel/Juice/BGContainer/CraftingContainer/Background").gameObject,
-                    _cookbookRoot.transform
-                );
+            GameObject frameClone = UnityEngine.Object.Instantiate(UnityEngine.Object.FindObjectOfType<CraftingPanel>().transform.Find("MainPanel/Juice/BGContainer/CraftingContainer/Background").gameObject, _cookbookRoot.transform);
             frameClone.name = "CookBookBorder";
             var borderRect = frameClone.GetComponent<RectTransform>();
             borderRect.anchorMin = new Vector2(0f, 0f);
@@ -521,22 +654,19 @@ namespace CookBook
             borderRect.sizeDelta = Vector2.zero;
 
             // strip out the crafting contents
-            foreach (Transform child in frameClone.transform)
-            {
-                UnityEngine.Object.Destroy(child.gameObject);
-            }
+            foreach (Transform child in frameClone.transform) UnityEngine.Object.Destroy(child.gameObject);
             // ensure stays top level
             borderRect.SetAsLastSibling();
 
             // ----------------------------- Dimensions ------------------------------
-            float padTopPx = CookBookPanelPaddingTopNorm * _panelHeight;
-            float padBottomPx = CookBookPanelPaddingBottomNorm * _panelHeight;
-            float padLeftPx = CookBookPanelPaddingLeftNorm * _panelWidth;
-            float padRightPx = CookBookPanelPaddingRightNorm * _panelWidth;
+            float padTopPx = RoundToEven(CookBookPanelPaddingTopNorm * _panelHeight);
+            float padBottomPx = RoundToEven(CookBookPanelPaddingBottomNorm * _panelHeight);
+            float padLeftPx = RoundToEven(CookBookPanelPaddingLeftNorm * _panelWidth);
+            float padRightPx = RoundToEven(CookBookPanelPaddingRightNorm * _panelWidth);
 
-            float spacingPx = CookBookPanelElementSpacingNorm * _panelHeight;
-            float searchBarHeightPx = SearchBarHeightNorm * _panelHeight;
-            float footerHeightPx = FooterHeightNorm * _panelHeight;
+            float spacingPx = RoundToEven(CookBookPanelElementSpacingNorm * _panelHeight);
+            float searchBarHeightPx = RoundToEven(SearchBarHeightNorm * _panelHeight);
+            float footerHeightPx = RoundToEven(FooterHeightNorm * _panelHeight);
 
             float innerHeight = _panelHeight - padTopPx - padBottomPx;
             float recipeListHeightPx = innerHeight - searchBarHeightPx - footerHeightPx - (spacingPx * 2);
@@ -577,6 +707,7 @@ namespace CookBook
             inputRect.anchoredPosition = Vector2.zero;
 
             bgImage.color = new Color(0f, 0f, 0f, 0.4f);
+            bgImage.raycastTarget = false;
 
             GameObject textAreaGO = CreateUIObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
 
@@ -623,10 +754,10 @@ namespace CookBook
             _searchInputField.placeholder = placeholderTMP;
             _searchInputField.onValueChanged.AddListener(OnSearchTextChanged);
 
-            AddBorder(inputRect, new Color32(209, 209, 210, 200), bottom: Mathf.Max(1f, SearchBarBottomBorderThicknessNorm * _panelHeight));
+            AddBorderTapered(inputRect, new Color32(209, 209, 210, 200), bottom: Mathf.Max(1f, SearchBarBottomBorderThicknessNorm * _panelHeight));
 
-            // ------------------------ Global Craft Button) ------------------------
             // TODO: update general shape to match ROR2 style
+            // ------------------------ Global Craft Button) ------------------------
             GameObject footerGO = CreateUIObject("Footer", typeof(RectTransform));
             var footerRT = footerGO.GetComponent<RectTransform>();
 
@@ -652,6 +783,7 @@ namespace CookBook
             craftBtnRT.sizeDelta = Vector2.zero;
 
             craftBtnImg.color = new Color32(40, 40, 40, 255);
+            craftBtnImg.raycastTarget = false;
             craftBtn.interactable = false;
 
             var btnTextGO = CreateUIObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -671,6 +803,7 @@ namespace CookBook
             _globalCraftButtonText = btnTextTMP;
             _globalCraftButtonImage = craftBtnImg;
 
+            AddBorder(footerRT, new Color32(209, 209, 210, 200), 1f, 1f, 1f, 1f);
             _globalCraftButton.onClick.AddListener(OnGlobalCraftButtonClicked);
 
             //------------------------ RecipeListContainer ------------------------
@@ -701,6 +834,7 @@ namespace CookBook
 
             GameObject viewportGO = CreateUIObject("Viewport", typeof(RectTransform), typeof(RectMask2D), typeof(Image));
             var viewportRT = viewportGO.GetComponent<RectTransform>();
+            var viewportImg = viewportGO.GetComponent<Image>();
 
             viewportRT.SetParent(listRect, false);
             viewportRT.anchorMin = Vector2.zero;
@@ -708,7 +842,8 @@ namespace CookBook
             viewportRT.sizeDelta = Vector2.zero;
             scroll.viewport = viewportRT;
 
-            viewportGO.GetComponent<Image>().color = Color.clear;
+            viewportImg.color = Color.clear;
+            viewportImg.raycastTarget = false;
 
             GameObject contentGO = CreateUIObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter), typeof(CanvasGroup));
 
@@ -747,11 +882,7 @@ namespace CookBook
         //==================== Instantiation ====================
         internal static GameObject CreateRecipeRow(RectTransform parent, CraftableEntry entry)
         {
-            if (_recipeRowTemplate == null)
-            {
-                _log?.LogWarning("RecipeRowTemplate missing.");
-                return null;
-            }
+            if (_recipeRowTemplate == null) return null;
 
             // ---------------- Initialize root ----------------
             GameObject rowGO = UnityEngine.Object.Instantiate(_recipeRowTemplate, parent);
@@ -776,17 +907,10 @@ namespace CookBook
             }
 
             // ---------------- MetaData: Depth ----------------
-            if (runtime.DepthText != null)
-            {
-                runtime.DepthText.text = $"Depth: {entry.MinDepth}";
-            }
+            if (runtime.DepthText != null) runtime.DepthText.text = $" Min Depth: {entry.MinDepth}";
 
             // ---------------- MetaData: Paths ----------------
-            if (runtime.PathsText != null)
-            {
-                int pathCount = entry.Chains?.Count ?? 0;
-                runtime.PathsText.text = $"Paths: {pathCount}";
-            }
+            if (runtime.PathsText != null) runtime.PathsText.text = $"Paths: {entry.Chains.Count}";
 
             // ---------------- ItemIcon ----------------
             if (runtime.ResultIcon != null)
@@ -813,10 +937,7 @@ namespace CookBook
                     runtime.ResultStackText.text = entry.ResultCount.ToString();
                     runtime.ResultStackText.gameObject.SetActive(true);
                 }
-                else
-                {
-                    runtime.ResultStackText.gameObject.SetActive(false);
-                }
+                else runtime.ResultStackText.gameObject.SetActive(false);
             }
 
             if (runtime.RowTopButton != null)
@@ -825,10 +946,7 @@ namespace CookBook
                 runtime.RowTopButton.onClick.AddListener(() => ToggleRecipeRow(runtime));
             }
 
-            if (runtime.DropdownLayoutElement != null)
-            {
-                runtime.DropdownLayoutElement.preferredHeight = 0f;
-            }
+            if (runtime.DropdownLayoutElement != null) runtime.DropdownLayoutElement.preferredHeight = 0f;
 
             return rowGO;
         }
@@ -842,14 +960,8 @@ namespace CookBook
             pathRowGO.SetActive(true);
 
             var runtime = pathRowGO.GetComponent<PathRowRuntime>();
-            if (runtime != null)
-            {
-                runtime.Init(owner, chain);
-            }
-            else
-            {
-                _log.LogError("PathRowTemplate missing PathRowRuntime component.");
-            }
+            if (runtime != null) runtime.Init(owner, chain);
+            else _log.LogError("PathRowTemplate missing PathRowRuntime component.");
 
             if (chain.TotalCost != null)
             {
@@ -859,11 +971,7 @@ namespace CookBook
                     if (count <= 0) continue;
 
                     Sprite icon = GetIcon(i);
-
-                    if (icon != null)
-                    {
-                        CreateIngredientSlot(pathRowGO.transform, icon, count);
-                    }
+                    if (icon != null) CreateIngredientSlot(runtime.VisualRect, icon, count);
                 }
             }
             return pathRowGO;
@@ -871,11 +979,7 @@ namespace CookBook
 
         private static void CreateIngredientSlot(Transform parentRow, Sprite icon, int count)
         {
-            if (_ingredientSlotTemplate == null)
-            {
-                _log.LogDebug("IngredientSlotTemplate was null when attempting to create an ingredientslot.");
-                return;
-            }
+            if (_ingredientSlotTemplate == null) return;
 
             GameObject slotGO = UnityEngine.Object.Instantiate(_ingredientSlotTemplate, parentRow);
             slotGO.name = "IngredientSlot";
@@ -885,6 +989,7 @@ namespace CookBook
             if (iconImg != null)
             {
                 iconImg.sprite = icon;
+                iconImg.raycastTarget = false;
                 iconImg.color = Color.white;
             }
 
@@ -896,31 +1001,24 @@ namespace CookBook
                     stackTmp.gameObject.SetActive(true);
                     stackTmp.text = count.ToString();
                 }
-                else
-                {
-                    stackTmp.gameObject.SetActive(false);
-                }
+                else stackTmp.gameObject.SetActive(false);
             }
         }
 
         //==================== Prefabs ====================
         private static void BuildRecipeRowTemplate()
         {
-            if (_recipeRowTemplate != null)
-            {
-                _log.LogDebug("BuildRecipeRowTemplate() Already built.");
-                return;
-            }
+            if (_recipeRowTemplate != null) return;
 
-            float topPadPx = RowTopTopPaddingNorm * _panelHeight;
-            float bottomPadPx = RowTopBottomPaddingNorm * _panelHeight;
-            float elementSpacingPx = RowTopElementSpacingNorm * _panelWidth;
-            float rowTopHeightPx = RowTopHeightNorm * _panelHeight;
+            float topPadPx = RoundToEven(RowTopTopPaddingNorm * _panelHeight);
+            float bottomPadPx = RoundToEven(RowTopBottomPaddingNorm * _panelHeight);
+            float elementSpacingPx = RoundToEven(RowTopElementSpacingNorm * _panelWidth);
+            float rowTopHeightPx = RoundToEven(RowTopHeightNorm * _panelHeight);
+            float metaWidthPx = RoundToEven(MetaDataColumnWidthNorm * _panelWidth);
+            float metaSpacingPx = RoundToEven(MetaDataElementSpacingNorm * _panelHeight);
+            float dropDownArrowSize = RoundToEven(DropDownArrowSizeNorm * _panelHeight);
+            float textSize = RoundToEven(textSizeNorm * _panelHeight);
             float innerHeight = rowTopHeightPx - (topPadPx + bottomPadPx);
-            float metaWidthPx = MetaDataColumnWidthNorm * _panelWidth;
-            float metaSpacingPx = MetaDataElementSpacingNorm * _panelHeight;
-            float dropDownArrowSize = DropDownArrowSizeNorm * _panelHeight;
-            float textSize = textSizeNorm * _panelHeight;
 
             // ---------------- RecipeRow root ----------------
             GameObject rowGO = CreateUIObject("RecipeRowTemplate", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(RecipeRowRuntime));
@@ -1053,7 +1151,7 @@ namespace CookBook
             metaRT.sizeDelta = new Vector2(metaWidthPx, innerHeight);
             metaRT.anchoredPosition = Vector2.zero;
 
-            float halfGap = metaSpacingPx / 2f;
+            float halfGap = RoundToEven(metaSpacingPx / 2f);
 
             var depthGO = CreateUIObject("MinimumDepth", typeof(RectTransform), typeof(TextMeshProUGUI));
             var depthRT = depthGO.GetComponent<RectTransform>();
@@ -1089,7 +1187,7 @@ namespace CookBook
             pathsTMP.color = Color.white;
             pathsTMP.raycastTarget = false;
 
-            AddBorder(rowTopRT, new Color32(209, 209, 210, 255), 1f, 1f, 0f, 0f);
+            AddBorderTapered(rowTopRT, new Color32(209, 209, 210, 200), 1f, 1f);
 
             // ---------------- PathsContainer ----------------
             GameObject mountGO = CreateUIObject("DropdownMountPoint", typeof(RectTransform), typeof(LayoutElement));
@@ -1132,23 +1230,24 @@ namespace CookBook
 
         private static void BuildPathRowTemplate()
         {
-            if (_pathRowTemplate != null)
-            {
-                return;
-            }
+            if (_pathRowTemplate != null) return;
 
-            float rowHeightPx = PathRowHeightNorm * _panelHeight;
-            float slotSpacingPx = PathRowIngredientSpacingNorm * _panelWidth;
+            float visualHeightPx = RoundToEven(PathRowHeightNorm * _panelHeight);
+            float spacingPx = RoundToEven(PathsContainerSpacingNorm * _panelHeight);
+            float slotSpacingPx = RoundToEven(PathRowIngredientSpacingNorm * _panelWidth);
             int leftPadPx = Mathf.RoundToInt(PathRowLeftPaddingNorm * _panelWidth);
             int rightPadPx = Mathf.RoundToInt(PathRowRightPaddingNorm * _panelWidth);
+            float totalRowHeightPx = visualHeightPx + spacingPx;
+            float paddingY = RoundToEven(spacingPx / 2f);
 
-            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(HorizontalLayoutGroup), typeof(PathRowRuntime));
+            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(PathRowRuntime), typeof(Button), typeof(EventTrigger));
 
             var rowRT = (RectTransform)rowGO.transform;
             var rowLE = rowGO.GetComponent<LayoutElement>();
-            var hlg = rowGO.GetComponent<HorizontalLayoutGroup>();
-            var rowImg = rowGO.GetComponent<Image>();
+            var rowHitbox = rowGO.GetComponent<Image>();
             var runtime = rowGO.GetComponent<PathRowRuntime>();
+            var pathButton = rowGO.GetComponent<Button>();
+            var buttonEvent = rowGO.GetComponent<EventTrigger>();
 
             rowRT.SetParent(_cookbookRoot.transform, false);
             rowGO.SetActive(false);
@@ -1160,9 +1259,28 @@ namespace CookBook
             rowRT.offsetMin = Vector2.zero;
             rowRT.offsetMax = Vector2.zero;
 
-            rowLE.preferredHeight = rowHeightPx;
+            rowLE.preferredHeight = totalRowHeightPx;
             rowLE.flexibleHeight = 0f;
             rowLE.flexibleWidth = 1f;
+
+            rowHitbox.color = Color.clear;
+            rowHitbox.raycastTarget = true;
+
+            pathButton.targetGraphic = rowHitbox;
+            pathButton.transition = Selectable.Transition.None;
+
+            var visualGO = CreateUIObject("Visuals", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(ColorFaderRuntime));
+
+            var visualRT = (RectTransform)visualGO.transform;
+            var visualImg = visualGO.GetComponent<Image>();
+            var hlg = visualGO.GetComponent<HorizontalLayoutGroup>();
+
+            visualRT.SetParent(rowRT, false);
+
+            visualRT.anchorMin = Vector2.zero;
+            visualRT.anchorMax = Vector2.one;
+            visualRT.offsetMin = new Vector2(0f, paddingY);
+            visualRT.offsetMax = new Vector2(0f, -paddingY);
 
             hlg.spacing = slotSpacingPx;
             hlg.childAlignment = TextAnchor.MiddleLeft;
@@ -1172,37 +1290,21 @@ namespace CookBook
             hlg.childForceExpandHeight = false;
             hlg.padding = new RectOffset(leftPadPx, rightPadPx, 0, 0);
 
-            rowImg.color = new Color32(5, 5, 5, 50);
-            runtime.BackgroundImage = rowImg;
+            visualImg.color = new Color32(26, 26, 26, 100);
+            visualImg.raycastTarget = false;
 
-            GameObject highlightGO = CreateUIObject("Highlight", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
-            var highlightRT = highlightGO.GetComponent<RectTransform>();
-            var highlightImg = highlightGO.GetComponent<Image>();
-            var highlightLE = highlightGO.GetComponent<LayoutElement>();
+            AddBorderTapered(visualRT, new Color32(209, 209, 210, 200), top: 1f, bottom: 1f);
+            runtime.BackgroundImage = visualImg;
+            runtime.VisualRect = visualRT;
+            runtime.pathButton = pathButton;
+            runtime.buttonEvent = buttonEvent;
 
-            highlightLE.ignoreLayout = true;
-
-            highlightRT.SetParent(rowRT, false);
-            highlightRT.anchorMin = Vector2.zero;
-            highlightRT.anchorMax = Vector2.one;
-            highlightRT.offsetMin = Vector2.zero;
-            highlightRT.offsetMax = Vector2.zero;
-
-            highlightImg.color = Color.clear;
-            highlightImg.raycastTarget = false;
-
-            runtime.HighlightImage = highlightImg;
-
-            AddBorder(rowRT, new Color32(209, 209, 210, 255), top: 1f, bottom: 1f);
             _pathRowTemplate = rowGO;
         }
 
         private static void BuildSharedDropdown()
         {
-            if (_sharedDropdown != null)
-            {
-                return;
-            }
+            if (_sharedDropdown != null) return;
 
             GameObject drawerGO = CreateUIObject("SharedDropdown", typeof(RectTransform), typeof(Image), typeof(NestedScrollRect), typeof(RecipeDropdownRuntime));
 
@@ -1261,14 +1363,11 @@ namespace CookBook
             vlg.childControlWidth = true;
             vlg.childForceExpandHeight = false;
             vlg.childForceExpandWidth = true;
-            vlg.spacing = PathsContainerSpacingNorm * _panelHeight;
+            vlg.spacing = 0f;
 
-            vlg.padding = new RectOffset(
-                Mathf.RoundToInt(PathsContainerLeftPaddingNorm * _panelWidth),
-                Mathf.RoundToInt(PathsContainerRightPaddingNorm * _panelWidth),
-                0,
-                0
-            );
+            int paddingVertical = Mathf.RoundToInt(PathsContainerSpacingNorm * _panelHeight / 2f);
+            int paddingHorizontal = Mathf.RoundToInt(PathsContainerLeftPaddingNorm * _panelWidth);
+            vlg.padding = new RectOffset(paddingHorizontal, paddingHorizontal, paddingVertical, paddingVertical);
 
             contentGO.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
@@ -1279,18 +1378,45 @@ namespace CookBook
             drawerGO.SetActive(false);
         }
 
+        private static void BuildSharedHoverRect()
+        {
+            if (_selectionReticle != null) return;
+
+            var reticleGO = CreateUIObject("SelectionReticle", typeof(RectTransform), typeof(Image), typeof(Canvas), typeof(LayoutElement));
+            _selectionReticle = reticleGO.GetComponent<RectTransform>();
+            var le = reticleGO.GetComponent<LayoutElement>();
+            le.ignoreLayout = true;
+
+            _selectionReticle.SetParent(_cookbookRoot.transform, false);
+
+            _selectionReticle.anchorMin = Vector2.zero;
+            _selectionReticle.anchorMax = Vector2.one;
+            _selectionReticle.pivot = new Vector2(0.5f, 0.5f);
+            _selectionReticle.sizeDelta = Vector2.zero;
+
+            var canvas = reticleGO.GetComponent<Canvas>();
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 30;
+
+            AddBorder(_selectionReticle, new Color32(255, 255, 255, 255), top: 3f, bottom: 3f, left: 3f, right: 3f);
+
+            var img = reticleGO.GetComponent<Image>();
+            img.color = new Color32(0, 0, 0, 0);
+            img.raycastTarget = false;
+
+            reticleGO.SetActive(false);
+        }
+
         private static void EnsureResultSlotArtTemplates(CraftingPanel craftingPanel)
         {
-            if (_ResultSlotTemplate != null)
-            {
-                return;
-            }
+            if (_ResultSlotTemplate != null) return;
 
             // configure base dimensions
-            float topPadPx = RowTopTopPaddingNorm * _panelHeight;
-            float bottomPadPx = RowTopBottomPaddingNorm * _panelHeight;
-            float rowTopHeightPx = RowTopHeightNorm * _panelHeight;
+            float topPadPx = RoundToEven(RowTopTopPaddingNorm * _panelHeight);
+            float bottomPadPx = RoundToEven(RowTopBottomPaddingNorm * _panelHeight);
+            float rowTopHeightPx = RoundToEven(RowTopHeightNorm * _panelHeight);
             float SlotHeightPx = rowTopHeightPx - (topPadPx + bottomPadPx);
+            float iconInsetPx = RoundToEven(SlotHeightPx * 0.125f);
 
             var slotGO = CreateUIObject("ResultSlotTemplate", typeof(RectTransform), typeof(LayoutElement));
             var slotRT = (RectTransform)slotGO.transform;
@@ -1348,13 +1474,11 @@ namespace CookBook
             var iconRT = (RectTransform)iconGO.transform;
             var iconImg = iconGO.GetComponent<Image>();
 
-            float insetPx = SlotHeightPx * 0.125f;
-
             iconRT.SetParent(slotRT, false);
             iconRT.anchorMin = Vector2.zero;
             iconRT.anchorMax = Vector2.one;
-            iconRT.offsetMin = new Vector2(insetPx, insetPx);
-            iconRT.offsetMax = new Vector2(-insetPx, -insetPx);
+            iconRT.offsetMin = new Vector2(iconInsetPx, iconInsetPx);
+            iconRT.offsetMax = new Vector2(-iconInsetPx, -iconInsetPx);
 
             iconImg.sprite = null;
             iconImg.preserveAspect = true;
@@ -1370,17 +1494,16 @@ namespace CookBook
             stackRT.anchorMin = new Vector2(1f, 1f);
             stackRT.anchorMax = new Vector2(1f, 1f);
             stackRT.pivot = new Vector2(1f, 1f);
-            stackRT.anchoredPosition = Vector2.zero;
             stackRT.sizeDelta = Vector2.zero;
+
+            float totalRightInset = _ResultStackMargin + _ResultStackMargin;
+            stackRT.anchoredPosition = new Vector2(-totalRightInset, -_ResultStackMargin);
 
             stackTMP.text = string.Empty;
             stackTMP.fontSize = _IngredientStackSizeTextHeightPx;
             stackTMP.alignment = TextAlignmentOptions.TopRight;
             stackTMP.color = Color.white;
             stackTMP.raycastTarget = false;
-
-            float extraRightPadding = _StackMargin;
-            stackTMP.margin = new Vector4(0f, _StackMargin, _StackMargin + extraRightPadding, 0f);
 
             stackGO.transform.SetAsLastSibling();
             stackLE.ignoreLayout = true;
@@ -1391,13 +1514,10 @@ namespace CookBook
 
         private static void EnsureIngredientSlotTemplate()
         {
-            if (_ingredientSlotTemplate != null)
-            {
-                return;
-            }
+            if (_ingredientSlotTemplate != null) return;
 
-            float IngredientHeightPx = IngredientHeightNorm * _panelHeight;
-
+            float IngredientHeightPx = RoundToEven(IngredientHeightNorm * _panelHeight);
+            float iconInsetPx = RoundToEven(IngredientHeightNorm * _panelHeight * 0.1f);
             var slotGO = CreateUIObject("IngredientSlotTemplate", typeof(RectTransform), typeof(LayoutElement));
             var slotRT = (RectTransform)slotGO.transform;
             var slotLE = slotGO.GetComponent<LayoutElement>();
@@ -1429,7 +1549,7 @@ namespace CookBook
             bgRT.offsetMin = Vector2.zero;
             bgRT.offsetMax = Vector2.zero;
 
-            bgImg.color = new Color32(10, 10, 10, 255);
+            bgImg.color = new Color32(16, 8, 10, 255);
             bgImg.raycastTarget = false;
 
             var iconGO = CreateUIObject("Icon", typeof(RectTransform), typeof(Image));
@@ -1440,8 +1560,8 @@ namespace CookBook
             iconRT.anchorMin = Vector2.zero;
             iconRT.anchorMax = Vector2.one;
             iconRT.pivot = new Vector2(0.5f, 0.5f);
-            iconRT.offsetMin = Vector2.zero;
-            iconRT.offsetMax = Vector2.zero;
+            iconRT.offsetMin = new Vector2(iconInsetPx, iconInsetPx);
+            iconRT.offsetMax = new Vector2(-iconInsetPx, -iconInsetPx);
 
             iconImg.sprite = null;
             iconImg.color = new Color(1f, 1f, 1f, 0.1f);
@@ -1459,7 +1579,7 @@ namespace CookBook
             stackRT.anchorMin = new Vector2(1f, 1f);
             stackRT.anchorMax = new Vector2(1f, 1f);
             stackRT.pivot = new Vector2(1f, 1f);
-            stackRT.anchoredPosition = new Vector2(-_StackMargin, -_StackMargin);
+            stackRT.anchoredPosition = new Vector2(-_IngredientStackMargin, -_IngredientStackMargin);
             stackRT.sizeDelta = Vector2.zero;
 
             stackTMP.text = string.Empty;
@@ -1473,7 +1593,7 @@ namespace CookBook
             stackGO.transform.SetAsLastSibling();
             stackGO.SetActive(false);
 
-            AddBorder(bgRT, new Color32(209, 209, 210, 255), 1f, 1f, 1f, 1f);
+            AddBorder(bgRT, new Color32(209, 209, 210, 200), 1f, 1f, 1f, 1f);
             _ingredientSlotTemplate = slotGO;
         }
 
@@ -1513,95 +1633,165 @@ namespace CookBook
             rt.offsetMax = Vector2.zero;
         }
 
-        // TODO: update border logic to ENSURE clean borders, right now they are slightly inset and pixel rounding is screwing me over :(
-        private static void AddBorder(RectTransform parent, Color32 color, float top = 0f, float bottom = 0f, float left = 0f, float right = 0f)
+        private static Sprite GetSolidPointSprite()
         {
-            var containerGO = CreateUIObject("BorderGroup", typeof(RectTransform), typeof(LayoutElement));
-            var containerRT = containerGO.GetComponent<RectTransform>();
-            var le = containerGO.GetComponent<LayoutElement>();
+            if (_solidPointSprite != null) return _solidPointSprite;
 
+            var tex = new Texture2D(1, 1, TextureFormat.ARGB32, false);
+            tex.SetPixel(0, 0, Color.white);
+            tex.filterMode = FilterMode.Point;
+            tex.Apply();
+
+            _solidPointSprite = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
+            return _solidPointSprite;
+        }
+
+        private static Sprite GetTaperedSprite()
+        {
+            if (_taperedGradientSprite != null) return _taperedGradientSprite;
+
+            int width = 256;
+            int height = 1;
+            var tex = new Texture2D(width, height, TextureFormat.ARGB32, false);
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.filterMode = FilterMode.Bilinear;
+
+            Color[] colors = new Color[width * height];
+            for (int x = 0; x < width; x++)
+            {
+                float t = x / (float)(width - 1);
+                // Sin wave: 0 at start, 1 at middle, 0 at end
+                float alpha = Mathf.Sin(t * Mathf.PI);
+                colors[x] = new Color(1, 1, 1, alpha);
+            }
+
+            tex.SetPixels(colors);
+            tex.Apply();
+
+            _taperedGradientSprite = Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f));
+            return _taperedGradientSprite;
+        }
+
+        public static GameObject AddBorder(RectTransform parent, Color32 color, float top = 0f, float bottom = 0f, float left = 0f, float right = 0f)
+        {
+            // --- THE FIX ---
+            // Convert logical "1.0" values into "Pixel Perfect" values.
+            // If you pass 1f, and scale is 1.5, this becomes 0.666f units (which equals exactly 1 screen pixel).
+            if (top > 0) top = GetPixelCorrectThickness(top);
+            if (bottom > 0) bottom = GetPixelCorrectThickness(bottom);
+            if (left > 0) left = GetPixelCorrectThickness(left);
+            if (right > 0) right = GetPixelCorrectThickness(right);
+            // ----------------
+
+            var containerGO = CreateUIObject("BorderGroup_Solid", typeof(RectTransform), typeof(LayoutElement));
+            var containerRT = containerGO.GetComponent<RectTransform>();
+
+            // Ignore layout to prevent disrupting parent grids
+            var le = containerGO.GetComponent<LayoutElement>();
             le.ignoreLayout = true;
 
+            // Fill Parent Exactly
             containerRT.SetParent(parent, false);
             containerRT.anchorMin = Vector2.zero;
             containerRT.anchorMax = Vector2.one;
-            containerRT.pivot = new Vector2(0.5f, 0.5f);
-            containerRT.offsetMin = Vector2.zero;
-            containerRT.offsetMax = Vector2.zero;
+            containerRT.sizeDelta = Vector2.zero;
+            containerRT.anchoredPosition = Vector2.zero;
 
-            containerGO.transform.SetAsLastSibling();
-
-            GameObject Make(string name)
+            RectTransform CreateBar(string name)
             {
                 var go = CreateUIObject(name, typeof(RectTransform), typeof(Image));
                 go.transform.SetParent(containerRT, false);
                 var img = go.GetComponent<Image>();
-                img.sprite = null;
+                img.sprite = GetSolidPointSprite();
                 img.color = color;
                 img.raycastTarget = false;
-                return go;
+                return go.GetComponent<RectTransform>();
             }
 
-            if (top > 0f)
+            // Use Integer Pivots (0 or 1) to ensure we grow inward from the exact edge
+
+            if (top > 0)
             {
-                var rt = Make("Top").GetComponent<RectTransform>();
-                rt.anchorMin = new Vector2(0f, 1f);
-                rt.anchorMax = new Vector2(1f, 1f);
-                rt.pivot = new Vector2(0.5f, 1f);
-                rt.anchoredPosition = Vector2.zero;
-                rt.sizeDelta = new Vector2(0f, top);
+                var t = CreateBar("Top");
+                t.anchorMin = new Vector2(0, 1); t.anchorMax = new Vector2(1, 1);
+                t.pivot = new Vector2(0.5f, 1); // Pivot Top
+                t.anchoredPosition = Vector2.zero;
+                t.sizeDelta = new Vector2(0, top);
             }
 
-            if (bottom > 0f)
+            if (bottom > 0)
             {
-                var rt = Make("Bottom").GetComponent<RectTransform>();
-                rt.anchorMin = new Vector2(0f, 0f);
-                rt.anchorMax = new Vector2(1f, 0f);
-                rt.pivot = new Vector2(0.5f, 0f);
-                rt.anchoredPosition = Vector2.zero;
-                rt.sizeDelta = new Vector2(0f, bottom);
+                var b = CreateBar("Bottom");
+                b.anchorMin = new Vector2(0, 0); b.anchorMax = new Vector2(1, 0);
+                b.pivot = new Vector2(0.5f, 0); // Pivot Bottom
+                b.anchoredPosition = Vector2.zero;
+                b.sizeDelta = new Vector2(0, bottom);
             }
 
-            if (left > 0f)
+            if (left > 0)
             {
-                var rt = Make("Left").GetComponent<RectTransform>();
-                rt.anchorMin = new Vector2(0f, 0f);
-                rt.anchorMax = new Vector2(0f, 1f);
-                rt.pivot = new Vector2(0f, 0.5f);
-                rt.anchoredPosition = Vector2.zero;
-                rt.sizeDelta = new Vector2(left, 0f);
-
-                rt.offsetMin = new Vector2(rt.offsetMin.x, bottom);
-                rt.offsetMax = new Vector2(rt.offsetMax.x, -top);
+                var l = CreateBar("Left");
+                l.anchorMin = new Vector2(0, 0); l.anchorMax = new Vector2(0, 1);
+                l.pivot = new Vector2(0, 0.5f); // Pivot Left
+                l.anchoredPosition = Vector2.zero;
+                l.sizeDelta = new Vector2(left, 0);
             }
 
-            if (right > 0f)
+            if (right > 0)
             {
-                var rt = Make("Right").GetComponent<RectTransform>();
-                rt.anchorMin = new Vector2(1f, 0f);
-                rt.anchorMax = new Vector2(1f, 1f);
-                rt.pivot = new Vector2(1f, 0.5f);
-                rt.anchoredPosition = Vector2.zero;
-                rt.sizeDelta = new Vector2(right, 0f);
-
-                rt.offsetMin = new Vector2(rt.offsetMin.x, bottom);
-                rt.offsetMax = new Vector2(rt.offsetMax.x, -top);
+                var r = CreateBar("Right");
+                r.anchorMin = new Vector2(1, 0); r.anchorMax = new Vector2(1, 1);
+                r.pivot = new Vector2(1, 0.5f); // Pivot Right
+                r.anchoredPosition = Vector2.zero;
+                r.sizeDelta = new Vector2(right, 0);
             }
+
+            return containerGO;
         }
 
-        static void DumpHierarchy(Transform t, int depth = 0)
+        public static GameObject AddBorderTapered(RectTransform parent, Color32 color, float top = 0f, float bottom = 0f)
         {
-            string indent = new string(' ', depth * 2);
-            _log.LogInfo(indent + t.name);
+            var containerGO = CreateUIObject("BorderGroup_Tapered", typeof(RectTransform), typeof(LayoutElement));
+            var containerRT = containerGO.GetComponent<RectTransform>();
+            containerGO.GetComponent<LayoutElement>().ignoreLayout = true;
 
-            foreach (Transform child in t)
-                DumpHierarchy(child, depth + 1);
+            containerRT.SetParent(parent, false);
+            containerRT.anchorMin = Vector2.zero;
+            containerRT.anchorMax = Vector2.one;
+            containerRT.offsetMin = Vector2.zero;
+            containerRT.offsetMax = Vector2.zero;
+
+            RectTransform MakeTaper(string name)
+            {
+                var go = CreateUIObject(name, typeof(RectTransform), typeof(Image));
+                go.transform.SetParent(containerRT, false);
+                var img = go.GetComponent<Image>();
+                img.sprite = GetTaperedSprite();
+                img.color = color;
+                img.raycastTarget = false;
+                return go.GetComponent<RectTransform>();
+            }
+
+            var t = MakeTaper("Top");
+            t.anchorMin = new Vector2(0, 1); t.anchorMax = new Vector2(1, 1);
+            t.pivot = new Vector2(0.5f, 1);
+            t.anchoredPosition = Vector2.zero;
+            t.sizeDelta = new Vector2(0, top);
+
+            if ((int)bottom > 0)
+            {
+                var b = MakeTaper("Bottom");
+                b.anchorMin = new Vector2(0, 0); b.anchorMax = new Vector2(1, 0);
+                b.pivot = new Vector2(0.5f, 0);
+                b.anchoredPosition = Vector2.zero;
+                b.sizeDelta = new Vector2(0, bottom);
+            }
+            return containerGO;
         }
 
         private static void AlignLabelVerticallyBetween(RectTransform labelRect, RectTransform bgMainRect, RectTransform submenuRect)
         {
-            if (!labelRect || !bgMainRect || !submenuRect)
-                return;
+            if (!labelRect || !bgMainRect || !submenuRect) return;
 
             var corners = new Vector3[4];
 
@@ -1618,61 +1808,49 @@ namespace CookBook
             labelRect.position = labelWorldPos;
         }
 
-
         //=========================== Events ===========================
         internal static void OnPathSelected(PathRowRuntime clickedPath)
         {
+            _currentHoveredPath = clickedPath;
             if (_selectedPathUI == clickedPath)
             {
                 DeselectCurrentPath();
                 return;
             }
 
-            if (_selectedPathUI != null)
-            {
-                _selectedPathUI.SetSelected(false);
-            }
+            if (_selectedPathUI != null) _selectedPathUI.SetSelected(false);
 
             _selectedPathUI = clickedPath;
             _selectedPathUI.SetSelected(true);
-
             _selectedChainData = clickedPath.Chain;
+
+            _selectedAnchor = clickedPath.VisualRect;
+            AttachReticleTo(_selectedAnchor);
 
             if (_globalCraftButton)
             {
                 _globalCraftButton.interactable = true;
-                _globalCraftButtonImage.color = new Color32(99, 219, 99, 255); // Chef Green
+                _globalCraftButtonImage.color = new Color32(206, 198, 143, 200);
                 _globalCraftButtonText.text = "craft";
-                _globalCraftButtonText.color = Color.black;
             }
         }
+
         private static void OnGlobalCraftButtonClicked()
         {
-            if (_selectedChainData == null)
-            {
-                _log.LogWarning("Craft button clicked but no chain data selected.");
-                return;
-            }
-
+            if (_selectedChainData == null) return;
             StateController.RequestCraft(_selectedChainData);
         }
 
         private static void CraftablesForUIChanged(IReadOnlyList<CraftableEntry> craftables)
         {
             _lastCraftables = craftables;
-
-            if (!_skeletonBuilt)
-                return;
-
+            if (!_skeletonBuilt) return;
             PopulateRecipeList(_lastCraftables);
         }
 
         private static void ToggleRecipeRow(RecipeRowRuntime runtime)
         {
-            if (runtime == null)
-            {
-                return;
-            }
+            if (runtime == null) return;
 
             if (_openRow == runtime)
             {
@@ -1681,10 +1859,7 @@ namespace CookBook
                 return;
             }
 
-            if (_openRow != null)
-            {
-                CollapseRow(_openRow);
-            }
+            if (_openRow != null) CollapseRow(_openRow);
 
             ExpandRow(runtime);
             _openRow = runtime;
@@ -1692,98 +1867,66 @@ namespace CookBook
 
         private static void ExpandRow(RecipeRowRuntime runtime)
         {
-            if (runtime.Entry == null || runtime.Entry.Chains == null)
-            {
-                return;
-            }
+            if (runtime.Entry == null || runtime.Entry.Chains == null) return;
 
             int chainCount = runtime.Entry.Chains.Count;
 
             if (chainCount != 0)
             {
-                float rowHeightPx = PathRowHeightNorm * _panelHeight;
-                float spacingPx = PathsContainerSpacingNorm * _panelHeight;
+                float rowHeightPx = RoundToEven(PathRowHeightNorm * _panelHeight);
+                float spacingPx = RoundToEven(PathsContainerSpacingNorm * _panelHeight);
                 int visibleRows = Mathf.Min(chainCount, PathsContainerMaxVisibleRows);
 
-                float targetHeight = (visibleRows * rowHeightPx) + (Mathf.Max(0, visibleRows - 1) * spacingPx);
+                float targetHeight = (visibleRows * rowHeightPx) + visibleRows * spacingPx + spacingPx;
 
-                if (runtime.DropdownLayoutElement != null)
-                {
-                    runtime.DropdownLayoutElement.preferredHeight = targetHeight;
-                }
-                else
-                {
-                    _log.LogDebug("DropDownLayoutElement was null, cant expand row.");
-                }
+                if (runtime.DropdownLayoutElement != null) runtime.DropdownLayoutElement.preferredHeight = targetHeight;
+                else _log.LogDebug("DropDownLayoutElement was null, cant expand row.");
 
-                if (runtime.RowLayoutElement != null)
-                {
-                    runtime.RowLayoutElement.preferredHeight = runtime.CollapsedHeight + targetHeight;
-                }
-                else
-                {
-                    _log.LogDebug("RowLayoutElement was null, cant expand row.");
-                }
+                if (runtime.RowLayoutElement != null) runtime.RowLayoutElement.preferredHeight = runtime.CollapsedHeight + targetHeight;
+                else _log.LogDebug("RowLayoutElement was null, cant expand row.");
 
-                if (_sharedDropdown != null)
-                {
-                    _sharedDropdown.OpenFor(runtime);
-                }
+                if (_sharedDropdown != null) _sharedDropdown.OpenFor(runtime);
             }
 
             runtime.IsExpanded = true;
-            if (runtime.ArrowText != null)
-            {
-                runtime.ArrowText.text = "v";
-            }
+            LayoutRebuilder.ForceRebuildLayoutImmediate(runtime.RowTransform);
+            PixelSnap(runtime.RowTransform);
+            PixelSnap(runtime.RowTop);
+            if (runtime.ArrowText != null) runtime.ArrowText.text = "v";
         }
 
         private static void CollapseRow(RecipeRowRuntime runtime)
         {
             if (_sharedDropdown != null && _sharedDropdown.CurrentOwner == runtime)
             {
-                _sharedDropdown.Close();
+                if (_selectionReticle != null && _selectionReticle.IsChildOf(_sharedDropdown.transform))
+                {
+                    _selectionReticle.SetParent(_cookbookRoot.transform, false);
+                    _selectionReticle.gameObject.SetActive(false);
+                }
+
+                _sharedDropdown.gameObject.SetActive(false);
             }
 
-            if (_selectedPathUI != null && _selectedPathUI.OwnerRow == runtime)
-            {
-                DeselectCurrentPath();
-            }
+            if (_selectedPathUI != null && _selectedPathUI.OwnerRow == runtime) DeselectCurrentPath();
 
-            if (runtime.DropdownLayoutElement != null)
-            {
-                runtime.DropdownLayoutElement.preferredHeight = 0f;
-            }
-            else
-            {
-                _log.LogDebug("DropDownLayoutElement was null, cant retract row.");
-            }
+            if (runtime.DropdownLayoutElement != null) runtime.DropdownLayoutElement.preferredHeight = 0f;
+            else _log.LogDebug("DropDownLayoutElement was null, cant retract row.");
 
-            if (runtime.RowLayoutElement != null)
-            {
-                runtime.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
-            }
-            else
-            {
-                _log.LogDebug("RowLayoutElement was null, cant retract row.");
-            }
+            if (runtime.RowLayoutElement != null) runtime.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
+            else _log.LogDebug("RowLayoutElement was null, cant retract row.");
 
             runtime.IsExpanded = false;
-            if (runtime.ArrowText != null)
-            {
-                runtime.ArrowText.text = ">";
-            }
+            LayoutRebuilder.ForceRebuildLayoutImmediate(runtime.RowTransform);
+            PixelSnap(runtime.RowTransform);
+            PixelSnap(runtime.RowTop);
+            if (runtime.ArrowText != null) runtime.ArrowText.text = ">";
         }
 
         private static void OnSearchTextChanged(string text)
         {
-            if (_recipeRowUIs == null)
-                return;
-
-            if (text == null)
-            {
-                text = string.Empty;
-            }
+            if (_recipeRowUIs == null) return;
+            if (text == null) text = string.Empty;
 
             text = text.Trim().ToLowerInvariant();
 
@@ -1805,66 +1948,72 @@ namespace CookBook
         internal static void PopulateRecipeList(IReadOnlyList<CraftableEntry> craftables)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-
-
-            if (!_skeletonBuilt || _recipeListContent == null)
-            {
-                return;
-            }
-            if (_runner == null)
-            {
-                return;
-            }
-
-            if (_activeBuildRoutine != null)
-            {
-                _runner.StopCoroutine(_activeBuildRoutine);
-            }
-
-            if (_cookbookRoot.activeInHierarchy)
-            {
-                _activeBuildRoutine = _runner.StartCoroutine(PopulateRoutine(craftables, sw));
-            }
+            if (!_skeletonBuilt || _recipeListContent == null || _runner == null) return;
+            if (_activeBuildRoutine != null) _runner.StopCoroutine(_activeBuildRoutine);
+            if (_cookbookRoot.activeInHierarchy) _activeBuildRoutine = _runner.StartCoroutine(PopulateRoutine(craftables, sw));
         }
 
         private static IEnumerator PopulateRoutine(IReadOnlyList<CraftableEntry> craftables, System.Diagnostics.Stopwatch sw)
         {
             var vlg = _recipeListContent.GetComponent<VerticalLayoutGroup>();
             var canvasGroup = _recipeListContent.GetComponent<CanvasGroup>();
+            var scrollRect = _recipeListContent.GetComponentInParent<ScrollRect>();
+
             if (canvasGroup)
             {
                 canvasGroup.alpha = 0f;
                 canvasGroup.blocksRaycasts = false;
             }
-            if (vlg)
+            if (vlg) vlg.enabled = false;
+
+            float previousScrollPos = scrollRect != null ? scrollRect.verticalNormalizedPosition : 0f;
+
+            if (_selectionReticle != null)
             {
-                vlg.enabled = false;
+                _selectionReticle.SetParent(_cookbookRoot.transform, false);
+                _selectionReticle.gameObject.SetActive(false);
+            }
+
+            if (_sharedDropdown != null)
+            {
+                _sharedDropdown.transform.SetParent(_cookbookRoot.transform, false);
+                _sharedDropdown.gameObject.SetActive(false);
+                _cachedDropdownOwner = null;
+                _sharedDropdown.CurrentOwner = null;
             }
 
             CraftableEntry previousEntry = null;
+            RecipeChain chainToRestoreHover = null;
+
             if (_openRow != null)
             {
                 previousEntry = _openRow.Entry;
                 CollapseRow(_openRow);
             }
-            _openRow = null;
 
-            foreach (Transform child in _recipeListContent)
-            {
-                UnityEngine.Object.Destroy(child.gameObject);
-            }
+            if (_currentHoveredPath != null) chainToRestoreHover = _currentHoveredPath.Chain;
+
+            _openRow = null;
+            _selectedAnchor = null;
+            _currentHoveredPath = null;
+
+            // Destroy all objects
+            foreach (Transform child in _recipeListContent) UnityEngine.Object.Destroy(child.gameObject);
             _recipeRowUIs.Clear();
 
             yield return null;
 
+            // Rebuild
             if (craftables == null || craftables.Count == 0)
             {
-                if (vlg)
+                if (vlg) vlg.enabled = true;
+                if (canvasGroup)
                 {
-                    vlg.enabled = true;
+                    canvasGroup.alpha = 1f;
+                    canvasGroup.blocksRaycasts = true;
                 }
-                _activeBuildRoutine = null;
 
+                _activeBuildRoutine = null;
                 sw.Stop();
                 _log.LogInfo($"CraftUI: PopulateRecipeList (Empty) completed in {sw.ElapsedMilliseconds}ms");
                 yield break;
@@ -1882,12 +2031,9 @@ namespace CookBook
 
                 _recipeRowUIs.Add(new RecipeRowUI { Entry = entry, RowGO = rowGO });
 
-                if (previousEntry != null && rowToRestore == null)
+                if (previousEntry != null && AreEntriesSame(previousEntry, entry))
                 {
-                    if (AreEntriesSame(previousEntry, entry))
-                    {
-                        rowToRestore = runtime;
-                    }
+                    rowToRestore = runtime;
                 }
 
                 builtCount++;
@@ -1898,11 +2044,48 @@ namespace CookBook
             {
                 vlg.enabled = true;
                 LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeListContent);
+                PixelSnap(_recipeListContent);
+            }
+
+            while (_activeDropdownRoutine != null)
+            {
+                yield return null;
             }
 
             if (rowToRestore != null)
             {
                 ToggleRecipeRow(rowToRestore);
+
+                if (_sharedDropdown != null && _sharedDropdown.CurrentOwner == rowToRestore)
+                {
+                    bool lookingForSelection = _selectedChainData != null;
+                    bool lookingForHover = chainToRestoreHover != null;
+                    foreach (Transform child in _sharedDropdown.Content)
+                    {
+                        if (!lookingForSelection && !lookingForHover) break;
+                        var pathRuntime = child.GetComponent<PathRowRuntime>();
+                        if (pathRuntime == null) continue;
+
+                        if (lookingForSelection && pathRuntime.Chain == _selectedChainData)
+                        {
+                            OnPathSelected(pathRuntime);
+                            lookingForSelection = false;
+                        }
+
+                        if (lookingForHover && pathRuntime.Chain == chainToRestoreHover)
+                        {
+                            _currentHoveredPath = pathRuntime;
+                            AttachReticleTo(pathRuntime.VisualRect);
+                            lookingForHover = false;
+                        }
+                    }
+                }
+            }
+            else DeselectCurrentPath();
+
+            if (scrollRect != null)
+            {
+                scrollRect.verticalNormalizedPosition = previousScrollPos;
             }
 
             if (canvasGroup)
@@ -1924,11 +2107,20 @@ namespace CookBook
                 return;
             }
 
+            bool isSameOwner = _cachedDropdownOwner == owner;
+            bool hasContent = contentRoot.childCount > 0;
+
+            if (isSameOwner && hasContent)
+            {
+                return;
+            }
+
             if (_activeDropdownRoutine != null)
             {
                 _runner.StopCoroutine(_activeDropdownRoutine);
             }
 
+            _cachedDropdownOwner = null;
             _activeDropdownRoutine = _runner.StartCoroutine(PopulateDropdownRoutine(contentRoot, owner));
         }
 
@@ -1955,16 +2147,94 @@ namespace CookBook
 
                 builtCount++;
 
-                if (builtCount % 4 == 0)
-                {
-                    yield return null;
-                }
+                if (builtCount % 4 == 0) yield return null;
             }
 
+            _cachedDropdownOwner = owner;
             _activeDropdownRoutine = null;
         }
 
-        // ========================= Helpers =========================
+        internal sealed class ColorFaderRuntime : MonoBehaviour
+        {
+            private Graphic _targetGraphic;
+            private Coroutine _activeRoutine;
+
+            private void Awake()
+            {
+                _targetGraphic = GetComponent<Graphic>();
+            }
+
+            public void CrossFadeColor(Color targetColor, float duration, bool ignoreTimeScale = true)
+            {
+                if (_targetGraphic == null) return;
+                if (_activeRoutine != null) StopCoroutine(_activeRoutine);
+                if (_targetGraphic.color == targetColor) return;
+                if (duration <= 0f || !gameObject.activeInHierarchy)
+                {
+                    _targetGraphic.color = targetColor;
+                    return;
+                }
+
+                _activeRoutine = StartCoroutine(FadeRoutine(targetColor, duration, ignoreTimeScale));
+            }
+
+            private IEnumerator FadeRoutine(Color target, float duration, bool ignoreTimeScale)
+            {
+                Color start = _targetGraphic.color;
+                float timer = 0f;
+
+                while (timer < duration)
+                {
+                    timer += ignoreTimeScale ? Time.unscaledDeltaTime : Time.deltaTime;
+
+                    float t = Mathf.Clamp01(timer / duration);
+
+                    _targetGraphic.color = Color.Lerp(start, target, t);
+                    yield return null;
+                }
+
+                _targetGraphic.color = target;
+                _activeRoutine = null;
+            }
+
+            private void OnDisable()
+            {
+                if (_activeRoutine != null) StopCoroutine(_activeRoutine);
+                _activeRoutine = null;
+            }
+        }
+
+        //=========================== Helpers =========================== 
+        internal static void AttachReticleTo(RectTransform target)
+        {
+            if (!_selectionReticle || !target) return;
+
+            _selectionReticle.SetParent(target, false);
+
+            _selectionReticle.localPosition = Vector3.zero;
+            _selectionReticle.localRotation = Quaternion.identity;
+            _selectionReticle.localScale = Vector3.one;
+
+            float outset = 4f;
+            _selectionReticle.offsetMin = new Vector2(-outset, -outset);
+            _selectionReticle.offsetMax = new Vector2(outset, outset);
+
+            _selectionReticle.gameObject.SetActive(true);
+            _selectionReticle.SetAsLastSibling();
+        }
+
+        internal static void RestoreReticleToSelection()
+        {
+            if (_selectedAnchor != null) _currentReticleTarget = _selectedAnchor;
+            else if (_selectionReticle) _selectionReticle.gameObject.SetActive(false);
+        }
+
+        internal static bool IsReticleAttachedTo(Transform t)
+        {
+            if (t == null || _selectionReticle == null) return false;
+            return _selectionReticle.parent == t;
+        }
+
         private static bool AreEntriesSame(CraftableEntry a, CraftableEntry b)
         {
             if (a == null || b == null) return false;
@@ -1984,28 +2254,19 @@ namespace CookBook
             if (_globalCraftButton)
             {
                 _globalCraftButton.interactable = false;
-                _globalCraftButtonImage.color = new Color32(40, 40, 40, 255);
+                _globalCraftButtonImage.color = new Color32(26, 22, 22, 100);
                 _globalCraftButtonText.text = "select a recipe";
-                _globalCraftButtonText.color = new Color32(100, 100, 100, 255);
+                _globalCraftButtonText.color = new Color32(255, 255, 255, 255);
             }
         }
 
         private static bool EntryMatchesSearch(CraftableEntry entry, string term)
         {
-            if (string.IsNullOrEmpty(term))
-            {
-                return true;
-            }
-            if (entry == null)
-            {
-                return false;
-            }
+            if (string.IsNullOrEmpty(term)) return true;
+            if (entry == null) return false;
 
             string name = GetEntryDisplayName(entry);
-            if (string.IsNullOrEmpty(name))
-            {
-                return false;
-            }
+            if (string.IsNullOrEmpty(name)) return false;
             return name.ToLowerInvariant().Contains(term);
         }
 
@@ -2030,10 +2291,7 @@ namespace CookBook
 
         private static Sprite GetIcon(int unifiedIndex)
         {
-            if (unifiedIndex < ItemCatalog.itemCount)
-            {
-                return ItemCatalog.GetItemDef((ItemIndex)unifiedIndex)?.pickupIconSprite;
-            }
+            if (unifiedIndex < ItemCatalog.itemCount) return ItemCatalog.GetItemDef((ItemIndex)unifiedIndex)?.pickupIconSprite;
             else
             {
                 int equipIdx = unifiedIndex - ItemCatalog.itemCount;
@@ -2045,14 +2303,8 @@ namespace CookBook
         {
             PickupIndex pickupIndex = PickupIndex.none;
 
-            if (entry.IsItem)
-            {
-                pickupIndex = PickupCatalog.FindPickupIndex(entry.ResultItem);
-            }
-            else
-            {
-                pickupIndex = PickupCatalog.FindPickupIndex(entry.ResultEquipment);
-            }
+            if (entry.IsItem) pickupIndex = PickupCatalog.FindPickupIndex(entry.ResultItem);
+            else pickupIndex = PickupCatalog.FindPickupIndex(entry.ResultEquipment);
 
             if (!pickupIndex.isValid) return Color.white;
             var pickupDef = PickupCatalog.GetPickupDef(pickupIndex);
@@ -2064,5 +2316,47 @@ namespace CookBook
             public CraftableEntry Entry;
             public GameObject RowGO;
         }
+
+        private static float RoundToEven(float value)
+        {
+            float result = Mathf.Round(value);
+            if (result % 2 != 0) result += 1f;
+            return result;
+        }
+
+        private static void PixelSnap(RectTransform rt)
+        {
+            if (!rt) return;
+
+            var p = rt.anchoredPosition;
+            p.x = Mathf.Round(p.x);
+            p.y = Mathf.Round(p.y);
+            rt.anchoredPosition = p;
+
+            var omin = rt.offsetMin;
+            var omax = rt.offsetMax;
+            omin.x = Mathf.Round(omin.x);
+            omin.y = Mathf.Round(omin.y);
+            omax.x = Mathf.Round(omax.x);
+            omax.y = Mathf.Round(omax.y);
+            rt.offsetMin = omin;
+            rt.offsetMax = omax;
+        }
+
+        private static float GetPixelCorrectThickness(float desiredPixels)
+        {
+            Canvas rootCanvas = _cookbookRoot ? _cookbookRoot.GetComponentInParent<Canvas>() : Object.FindObjectOfType<Canvas>();
+
+            if (rootCanvas != null)
+            {
+                float pixelRatio = 1f / rootCanvas.scaleFactor;
+
+                return Mathf.Round(desiredPixels) * pixelRatio;
+            }
+
+            return desiredPixels; // Fallback
+        }
+
+
     }
 }
