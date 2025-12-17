@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+CookBook/CHANGELOG.md
+CookBook/Thunderstore/CookBook.dll
+CookBook/Thunderstore/CookBook.zip
+CookBook/Thunderstore/icon.png
+CookBook/Thunderstore/manifest.json
+CookBook/Thunderstore/README.md
