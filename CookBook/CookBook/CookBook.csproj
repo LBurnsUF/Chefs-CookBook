@@ -4,7 +4,7 @@
 		<TargetFramework>netstandard2.1</TargetFramework>
 		<LangVersion>preview</LangVersion>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-		<BaseOutputPath>C:\Users\logan\Desktop\Personal Projects\LBurnsUF\Chefs-CookBook\CookBook</BaseOutputPath>
+		<BaseOutputPath>C:\Users\logan\Desktop\Personal Projects\LBurnsUF\Chefs-CookBook</BaseOutputPath>
 	</PropertyGroup>
 
 	<ItemGroup>
