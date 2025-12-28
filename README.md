@@ -77,5 +77,6 @@ Planned but not yet implemented features include:
 
 ## Feedback and Issues
 
-If you encounter bugs, layout issues, or have feature suggestions,  
-please report them on the mod’s GitHub page.
+- Have ideas or suggestions? Post them in the [Feature Suggestions discussion](https://github.com/LBurnsUF/Chefs-CookBook/discussions/3).
+- Encountered performance issues? Create a [performance issue report](https://github.com/LBurnsUF/Chefs-CookBook/issues?q=state%3Aopen%20label%3A%22performance%20issue%22).
+- Encounted a bug? Create a [bug report](https://github.com/LBurnsUF/Chefs-CookBook/issues?q=state%3Aopen%20label%3Abug).
