@@ -11,6 +11,8 @@ namespace CookBook
     internal static class CraftingExecutionHandler
     {
         private static ManualLogSource _log;
+
+        private static CraftingObjectiveTracker.ObjectiveToken _currentObjective;
         private static Coroutine _craftingRoutine;
         private static MonoBehaviour _runner;
 
@@ -32,80 +34,88 @@ namespace CookBook
         {
             if (_craftingRoutine != null) _runner.StopCoroutine(_craftingRoutine);
             _craftingRoutine = null;
-            CraftingObjectiveTracker.CurrentObjectiveText = string.Empty;
+
+            if (_currentObjective != null)
+            {
+                _currentObjective.Complete();
+                _currentObjective = null;
+            }
+
+            CraftingObjectiveTracker.Cleanup();
+            CraftingObjectiveTracker.Init();
 
             if (StateController.ActiveCraftingController) CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
             _log.LogInfo("[ExecutionHandler] Craft aborted.");
         }
 
+        private static void SetObjectiveText(string text)
+        {
+            if (_currentObjective == null)
+            {
+                _currentObjective = CraftingObjectiveTracker.CreateObjective(text);
+            }
+            else
+            {
+                _currentObjective.UpdateText(text);
+            }
+        }
+
+        private static void CompleteCurrentObjective()
+        {
+            if (_currentObjective != null)
+            {
+                _currentObjective.Complete();
+                _currentObjective = null;
+            }
+        }
+
+
         private static IEnumerator CraftChainRoutine(CraftPlanner.RecipeChain chain)
         {
-            _log.LogInfo($"[Execution] Starting Chain. Scrap Requirements: {chain.DroneCostSparse?.Length ?? 0}. Recipe Steps: {chain.Steps.Count}");
-
             var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
-            if (!body)
-            {
-                Abort();
-                yield break;
-            }
+            if (!body) { Abort(); yield break; }
 
             if (chain.DroneCostSparse != null && chain.DroneCostSparse.Length > 0)
             {
-                _log.LogInfo($"[Chain] Requirements: {chain.DroneCostSparse.Length} scrap types needed.");
-
                 foreach (var req in chain.DroneCostSparse)
                 {
-                    PickupIndex pickupIndex;
-                    if (req.IsItem) pickupIndex = PickupCatalog.FindPickupIndex((ItemIndex)req.UnifiedIndex);
-                    else pickupIndex = PickupCatalog.FindPickupIndex((EquipmentIndex)(req.UnifiedIndex - ItemCatalog.itemCount));
-
-                    var itemDef = PickupCatalog.GetPickupDef(pickupIndex);
-                    if (itemDef == null) continue;
-
-                    int currentCount = GetOwnedCount(itemDef, body);
-
-                    if (currentCount < req.Count)
-                    {
-                        int needed = req.Count - currentCount;
-
-                        string droneName = "Drone";
-                        DroneIndex bestCandidate = InventoryTracker.GetScrapCandidate(req.UnifiedIndex);
-
-                        if (bestCandidate != DroneIndex.None)
-                        {
-                            if (DroneCatalog.GetDroneDef(bestCandidate)?.bodyPrefab?.GetComponent<CharacterBody>() is CharacterBody droneBody) droneName = Language.GetString(droneBody.baseNameToken);
-                        }
-
-                        string scrapName = Language.GetString(itemDef.nameToken);
-                        string msg = $"Scrap {droneName} for {scrapName}";
-                        CraftingObjectiveTracker.SetObjective(msg, true);
-
-                        _log.LogInfo($"[Execution] Waiting for {needed}x {scrapName}...");
-                        yield return WaitForPendingPickup(pickupIndex, needed);
-                    }
+                    PickupIndex pi = GetPickupIndexFromUnified(req.UnifiedIndex);
+                    yield return HandleAcquisition(pi, req.Count, $"Scrap {GetDroneName(req.UnifiedIndex)}");
                 }
-
-                _log.LogInfo("[Execution] All scrap requirements met.");
             }
 
-            Queue<ChefRecipe> craftQueue = new Queue<ChefRecipe>(chain.Steps.Reverse());
+            if (chain.AlliedTradeSparse != null && chain.AlliedTradeSparse.Length > 0)
+            {
+                foreach (var req in chain.AlliedTradeSparse)
+                {
+                    PickupIndex pi = GetPickupIndexFromUnified(req.UnifiedIndex);
+                    string donorName = req.Donor?.userName ?? "Ally";
+
+                    yield return HandleAcquisition(pi, req.Count, $"Wait for {donorName} to trade");
+                }
+            }
+
+            _log.LogInfo("================= PHASE 2: ASSEMBLY =================");
+
+            Queue<ChefRecipe> craftQueue = new Queue<ChefRecipe>(chain.Steps.Where(s => !(s is TradeRecipe)));
             PickupIndex lastPickup = PickupIndex.none;
             int lastQty = 0;
 
             while (craftQueue.Count > 0)
             {
-                var localUser = LocalUserManager.GetFirstLocalUser();
-                body = localUser?.cachedBody;
+                body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
                 var interactor = body?.GetComponent<Interactor>();
 
                 if (lastPickup != PickupIndex.none)
                 {
                     var def = PickupCatalog.GetPickupDef(lastPickup);
-                    CraftingObjectiveTracker.SetObjective($"Collect {Language.GetString(def?.nameToken ?? "Result")}", true);
+                    SetObjectiveText($"Collect {Language.GetString(def?.nameToken ?? "Result")}");
                     yield return WaitForPendingPickup(lastPickup, lastQty);
+                    CompleteCurrentObjective();
+                    lastPickup = PickupIndex.none;
                 }
 
-                CraftingObjectiveTracker.SetObjective("Approach Wandering CHEF", true);
+                SetObjectiveText("Approach Wandering CHEF");
 
                 while (StateController.ActiveCraftingController == null)
                 {
@@ -145,7 +155,7 @@ namespace CookBook
 
                 ChefRecipe step = craftQueue.Dequeue();
                 string stepName = GetStepName(step);
-                CraftingObjectiveTracker.SetObjective($"Processing {stepName}...", true);
+                SetObjectiveText($"Processing {stepName}...");
 
                 StateController.ActiveCraftingController.ClearAllSlots();
                 if (!SubmitIngredients(StateController.ActiveCraftingController, step))
@@ -171,6 +181,24 @@ namespace CookBook
 
             _log.LogInfo("[ExecutionHandler] Chain Complete.");
             Abort();
+        }
+
+        private static IEnumerator HandleAcquisition(PickupIndex pi, int totalNeeded, string actionPrefix)
+        {
+            var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
+            var def = PickupCatalog.GetPickupDef(pi);
+            if (!body || def == null) yield break;
+
+            int current = GetOwnedCount(def, body);
+            if (current >= totalNeeded) yield break;
+
+            int remaining = totalNeeded - current;
+            string itemName = Language.GetString(def.nameToken);
+
+            SetObjectiveText($"{actionPrefix} {itemName} <style=cSub>(Need {remaining})</style>");
+
+            yield return WaitForPendingPickup(pi, remaining);
+            CompleteCurrentObjective();
         }
 
         private static IEnumerator WaitForPendingPickup(PickupIndex pickupIndex, int expectedGain)
@@ -235,6 +263,25 @@ namespace CookBook
         {
             if (step.ResultIndex < ItemCatalog.itemCount) return PickupCatalog.FindPickupIndex((ItemIndex)step.ResultIndex);
             return PickupCatalog.FindPickupIndex((EquipmentIndex)(step.ResultIndex - ItemCatalog.itemCount));
+        }
+
+        private static string GetDroneName(int unifiedIndex)
+        {
+            DroneIndex bestCandidate = InventoryTracker.GetScrapCandidate(unifiedIndex);
+            if (bestCandidate != DroneIndex.None)
+            {
+                var prefab = DroneCatalog.GetDroneDef(bestCandidate)?.bodyPrefab;
+                if (prefab && prefab.GetComponent<CharacterBody>() is CharacterBody b)
+                    return Language.GetString(b.baseNameToken);
+            }
+            return "Drone";
+        }
+
+        private static PickupIndex GetPickupIndexFromUnified(int unifiedIndex)
+        {
+            if (unifiedIndex < ItemCatalog.itemCount)
+                return PickupCatalog.FindPickupIndex((ItemIndex)unifiedIndex);
+            return PickupCatalog.FindPickupIndex((EquipmentIndex)(unifiedIndex - ItemCatalog.itemCount));
         }
     }
 }

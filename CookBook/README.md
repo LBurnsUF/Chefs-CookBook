@@ -2,7 +2,7 @@
 
 **CookBook** is a quality-of-life mod for *Risk of Rain 2* that provides a structured, searchable, and expandable view of craftable items and their possible crafting paths.
 
-Instead of mentally tracking multi-step recipes or juggling external spreadsheets, CookBook presents crafting information **in-game** with a clean, scalable UI designed for large inventories and complex recipe graphs.
+Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook presents crafting information **in-game** with a clean, scalable UI designed for large inventories and complex recipe graphs.
 
 ![CookBook Overview](images/UI.png)
 ---
@@ -23,18 +23,18 @@ Instead of mentally tracking multi-step recipes or juggling external spreadsheet
   - Hash-based recipe deduplication
 - Backend cleanly separates data, logic, and UI for extensibility
 - Robust against other mods:
-  - Includes hooks to refresh recipe logic for custom or modded recipes
+  - Includes hooks to refresh recipe logic at runtime in case a mod wants to be silly and modify recipes AFTER contentpacking...
 
 ---
 
 ## Controls
 
+- Configure various keybinds and crafting features in the Mod's settings menu
 - Click a recipe row to expand or collapse its available crafting paths
 - The search bar filters results in real time
-- Result counts are displayed inline, appended as `[xN]`
-- Expand a recipe row, select the path you want, then select **Craft**
-- Hold *left alt* to cancel an in progress craft
- - The full chain of crafts will be completed automatically
+- Expand a recipe row, select the path you want, then select **craft**
+	- The *Objectives* panel will be updated to visualize the status of the craft chain
+	- Hold *left alt* to cancel an in progress craft
 
 ---
 
@@ -64,6 +64,8 @@ Planned but not yet implemented features include:
 - Configuration menu with in-built sorting controls  
   (alphabetical, depth, path count, etc.)
 - Visual polish and UI refinements for UI frontend (this is my first mod, and Unity UI is painful)
+- In-Progress run recipe tracking
+	- Maybe allow users to star a desired result, adding it to the objectives panel for easy remembrance?
 
 ---
 

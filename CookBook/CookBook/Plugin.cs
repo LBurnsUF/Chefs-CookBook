@@ -2,7 +2,12 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using RoR2;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using UnityEngine;
+using static CookBook.TierManager;
 
 namespace CookBook
 {
@@ -13,17 +18,21 @@ namespace CookBook
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "rainorshine";
         public const string PluginName = "CookBook";
-        public const string PluginVersion = "1.2.0";
+        public const string PluginVersion = "1.2.2";
 
         internal static ManualLogSource Log;
         private const int DefaultMaxDepth = 5;
 
         public static ConfigEntry<int> MaxDepth;
         public static ConfigEntry<string> TierOrder;
+        public static ConfigEntry<KeyboardShortcut> AbortKey;
+        public static ConfigEntry<float> ComputeThrottle;
+        public static ConfigEntry<bool> AllowMultiplayerPooling;
+
+        internal static Dictionary<ItemTier, ConfigEntry<TierPriority>> TierPriorities = new();
 
         public void Awake()
         {
-
             Log = Logger;
             Log.LogInfo("CookBook: Awake()");
 
@@ -39,40 +48,77 @@ namespace CookBook
                 "Tier3,Tier2,Tier1,Boss,Lunar,VoidTier3,VoidTier2,VoidTier1,AssignedAtRuntime,NoTier",
                 "Comma-separated tier order for sorting craftable items."
             );
+            AbortKey = Config.Bind(
+                "General",
+                "AbortKey",
+                new KeyboardShortcut(KeyCode.LeftAlt),
+                "Key to hold to abort an active auto-crafting sequence."
+            );
+            ComputeThrottle = Config.Bind(
+                "Performance",
+                "ComputeThrottle",
+                0.15f,
+                "Delay (seconds) after inventory changes before recomputing recipes."
+            );
+            AllowMultiplayerPooling = Config.Bind(
+                "General",
+                "Allow Multiplayer Pooling",
+                false,
+                "If true, the planner will include items owned by teammates in its search (requires SPEX trades)."
+            );
 
             TierManager.Init(Log);
 
-            // discover any custom item tiers
+            // Inside CookBook.Awake()
             ItemCatalog.availability.CallWhenAvailable(() =>
             {
                 var defaultTiers = TierManager.ParseTierOrder(TierOrder.Value);
-                var merged = TierManager.MergeOrder(defaultTiers, TierManager.DiscoverTiersFromCatalog());
+                var discoveredTiers = TierManager.DiscoverTiersFromCatalog();
+                var merged = TierManager.MergeOrder(defaultTiers, discoveredTiers);
 
-                // push discovered tiers back into the config
                 string mergedCsv = TierManager.ToCsv(merged);
                 if (TierOrder.Value != mergedCsv)
                 {
-                    Log.LogInfo($"CookBook: updating TierOrder config to include newly discovered tiers: {mergedCsv}");
+                    Log.LogInfo($"CookBook: Syncing TierOrder config: {mergedCsv}");
                     TierOrder.Value = mergedCsv;
                 }
-                else
+                TierManager.SetOrder(merged);
+
+                foreach (var tier in TierManager.GetAllKnownTiers())
                 {
-                    // No new tiers; just apply the current order
-                    TierManager.SetOrder(merged);
+                    string friendlyName = TierManager.GetFriendlyName(tier);
+
+                    // 1. Bind normally
+                    var configEntry = Config.Bind<TierManager.TierPriority>(
+                        "Tier Sorting",
+                        $"Priority_{tier}",
+                        TierManager.GetDefaultPriorityForTier(tier),
+                        $"Priority for {friendlyName} items."
+                    );
+
+                    if (!Enum.IsDefined(typeof(TierManager.TierPriority), configEntry.Value))
+                    {
+                        configEntry.Value = TierManager.GetDefaultPriorityForTier(tier);
+                    }
+
+                    if (!TierPriorities.ContainsKey(tier))
+                    {
+                        TierPriorities[tier] = configEntry;
+                        configEntry.SettingChanged += TierManager.OnTierPriorityChanged;
+                    }
+                }
+
+                // Initialize UI only after all tiers are cataloged and bound
+                if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("com.rune580.riskofoptions"))
+                {
+                    SettingsUI.Init(this);
                 }
             });
 
-            TierOrder.SettingChanged += TierManager.OnTierOrderConfigChanged; // subscribe to sorting config change events
             MaxDepth.SettingChanged += StateController.OnMaxDepthChanged;
-
-            // subscribe to recipe completion event
+            TierManager.OnTierOrderChanged += StateController.OnTierOrderChanged;
             RecipeProvider.OnRecipesBuilt += StateController.OnRecipesBuilt;
 
-            // subscribe to sort order update events
-            TierManager.OnTierOrderChanged += StateController.OnTierOrderChanged;
-
-            // Init subsystems
-            // TODO: Initialize settings UI via SettingsUI.cs, actually work with RiskOfOptions ffs
             RecipeProvider.Init(Log); // Parse all chef recipe rules
             StateController.Init(Log); // Initialize chef/state logic
             DialogueHooks.Init(Log); // Initialize all Chef Dialogue Hooks
@@ -85,19 +131,23 @@ namespace CookBook
 
         private void OnDestroy()
         {
+            // unsubscribe from settings changes
+            foreach (var tierEntry in TierPriorities.Values)
+            {
+                if (tierEntry != null)
+                {
+                    tierEntry.SettingChanged -= TierManager.OnTierPriorityChanged;
+                }
+            }
+            MaxDepth.SettingChanged -= StateController.OnMaxDepthChanged;
+
             // Clean up global event subscriptions
             RecipeProvider.OnRecipesBuilt -= StateController.OnRecipesBuilt;
             TierManager.OnTierOrderChanged -= StateController.OnTierOrderChanged;
 
-            // unsubscribe from settings changes
-            TierOrder.SettingChanged -= TierManager.OnTierOrderConfigChanged;
-            MaxDepth.SettingChanged -= StateController.OnMaxDepthChanged;
-
-            // unsubscribe from chef ui state events
             DialogueHooks.ChefUiOpened -= StateController.OnChefUiOpened;
             DialogueHooks.ChefUiClosed -= StateController.OnChefUiClosed;
 
-            // ask subsystems to clean up their own game hooks
             RecipeProvider.Shutdown();
             StateController.Shutdown();
             DialogueHooks.Shutdown();

@@ -1,12 +1,8 @@
 ﻿using BepInEx.Logging;
 using RoR2;
 using RoR2.ContentManagement;
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using UnityEngine;
-using static CookBook.CraftPlanner;
 
 namespace CookBook
 {
@@ -40,7 +36,7 @@ namespace CookBook
             _initialized = true;
             _log = log;
 
-            ContentManager.onContentPacksAssigned += OnContentPacksAssigned; // subscribe to pack events to ensure recipes are built after all other recipes are handled
+            ContentManager.onContentPacksAssigned += OnContentPacksAssigned;
         }
 
         internal static void Shutdown()
@@ -96,105 +92,69 @@ namespace CookBook
 
             foreach (var recipeEntry in recipesArray)
             {
-                if (recipeEntry == null)
-                {
-                    continue;
-                }
+                if (recipeEntry == null) continue;
 
-                // ---------------- Resolve Result Index ----------------
+                // 1. Resolve Result
                 PickupIndex resultPickup = recipeEntry.result;
-                if (!resultPickup.isValid || resultPickup == PickupIndex.none)
-                {
-                    continue;
-                }
+                if (!resultPickup.isValid || resultPickup == PickupIndex.none) continue;
 
                 PickupDef resultDef = PickupCatalog.GetPickupDef(resultPickup);
-                if (resultDef == null)
-                {
-                    continue;
-                }
+                if (resultDef == null) continue;
 
-                int resultIndex = -1;
+                int resultIndex = resultDef.itemIndex != ItemIndex.None
+                    ? (int)resultDef.itemIndex
+                    : (resultDef.equipmentIndex != EquipmentIndex.None ? itemOffset + (int)resultDef.equipmentIndex : -1);
 
-                if (resultDef.itemIndex != ItemIndex.None)
-                {
-                    resultIndex = (int)resultDef.itemIndex;
-                }
-                else if (resultDef.equipmentIndex != EquipmentIndex.None)
-                {
-                    resultIndex = itemOffset + (int)resultDef.equipmentIndex;
-                }
-                else
-                {
-                    continue;
-                }
+                if (resultIndex == -1) continue;
 
-                int resultCount = recipeEntry.amountToDrop;
-
-                // ---------------- Resolve Ingredient Indices ----------------
+                // 2. Resolve Raw Ingredient Indices
                 List<PickupIndex> ingredientPickups = recipeEntry.GetAllPickups();
-                if (ingredientPickups == null || ingredientPickups.Count == 0)
-                {
-                    continue;
-                }
+                if (ingredientPickups == null || ingredientPickups.Count == 0) continue;
 
-                var rawIngredients = new List<Ingredient>();
-
+                var rawIndices = new List<int>();
                 foreach (var ingPi in ingredientPickups)
                 {
-                    if (!ingPi.isValid || ingPi == PickupIndex.none)
-                    {
-                        continue;
-                    }
-
+                    if (!ingPi.isValid || ingPi == PickupIndex.none) continue;
                     PickupDef ingDef = PickupCatalog.GetPickupDef(ingPi);
-                    if (ingDef == null)
-                    {
-                        continue;
-                    }
+                    if (ingDef == null) continue;
 
-                    int ingIndex = -1;
+                    int idx = ingDef.itemIndex != ItemIndex.None
+                        ? (int)ingDef.itemIndex
+                        : (ingDef.equipmentIndex != EquipmentIndex.None ? itemOffset + (int)ingDef.equipmentIndex : -1);
 
-                    if (ingDef.itemIndex != ItemIndex.None)
-                    {
-                        ingIndex = (int)ingDef.itemIndex;
-                    }
-                    else if (ingDef.equipmentIndex != EquipmentIndex.None)
-                    {
-                        ingIndex = itemOffset + (int)ingDef.equipmentIndex;
-                    }
-
-                    if (ingIndex != -1)
-                    {
-                        rawIngredients.Add(new Ingredient(ingIndex, 1));
-                    }
+                    if (idx != -1) rawIndices.Add(idx);
                 }
 
-                if (rawIngredients.Count == 0)
-                {
-                    continue;
-                }
+                if (rawIndices.Count == 0) continue;
 
-                if (rawIngredients.Count <= 2)
+                bool isPureBulk = rawIndices.Distinct().Count() == 1;
+
+                if (isPureBulk && rawIndices.Count > 1)
                 {
-                    var recipe = new ChefRecipe(resultIndex, resultCount, rawIngredients.ToArray());
+                    var consolidated = new Ingredient(rawIndices[0], rawIndices.Count);
+                    var recipe = new ChefRecipe(resultIndex, recipeEntry.amountToDrop, new[] { consolidated });
+                    _recipes.Add(recipe);
+                }
+                else if (rawIndices.Count <= 2)
+                {
+                    var ings = rawIndices.Select(idx => new Ingredient(idx, 1)).ToArray();
+                    var recipe = new ChefRecipe(resultIndex, recipeEntry.amountToDrop, ings);
                     _recipes.Add(recipe);
                 }
                 else
                 {
-                    var baseIng = rawIngredients[0];
-                    for (int i = 1; i < rawIngredients.Count; i++)
+                    var baseIdx = rawIndices[0];
+                    for (int i = 1; i < rawIndices.Count; i++)
                     {
-                        var variantIng = rawIngredients[i];
-                        var pair = new Ingredient[] { baseIng, variantIng };
-
-                        var recipe = new ChefRecipe(resultIndex, resultCount, pair);
+                        var pair = new Ingredient[] { new Ingredient(baseIdx, 1), new Ingredient(rawIndices[i], 1) };
+                        var recipe = new ChefRecipe(resultIndex, recipeEntry.amountToDrop, pair);
                         _recipes.Add(recipe);
                     }
                 }
             }
+
             _recipesBuilt = true;
-            _log.LogInfo($"RecipeProvider: Built {_recipes.Count} explicit recipes from game data.");
+            _log.LogInfo($"RecipeProvider: Built {_recipes.Count} explicit recipes.");
             OnRecipesBuilt?.Invoke(_recipes);
         }
     }
@@ -243,72 +203,62 @@ namespace CookBook
     }
 
     /// <summary>result entry</summary>
-    internal sealed class ChefRecipe
+    internal class ChefRecipe
     {
         public int ResultIndex { get; }
         public int ResultCount { get; }
         public Ingredient[] Ingredients { get; }
+        private readonly int _cachedHash;
 
         public ChefRecipe(int resultIndex, int resultCount, Ingredient[] ingredients)
         {
             ResultIndex = resultIndex;
             ResultCount = resultCount;
             Ingredients = ingredients;
+            _cachedHash = CalculateInitialHash();
         }
 
-        private int GetIngredientsCanonicalHash()
+        private int CalculateInitialHash()
         {
-            if (Ingredients == null || Ingredients.Length == 0)
+            unchecked
             {
-                return 0;
-            }
+                int hash = 17;
+                hash = hash * 31 + ResultIndex;
+                hash = hash * 31 + ResultCount;
 
-            var ingredientHashes = new List<int>(Ingredients.Length);
-            foreach (var ingredient in Ingredients)
-            {
-                ingredientHashes.Add(ingredient.GetHashCode());
-            }
+                if (Ingredients != null)
+                {
+                    var sortedHashes = Ingredients.Select(i => i.GetHashCode()).ToList();
+                    sortedHashes.Sort();
 
-            ingredientHashes.Sort();
-
-            int hash = 17;
-            foreach (int ingHash in ingredientHashes)
-            {
-                hash = hash * 31 + ingHash;
+                    foreach (var h in sortedHashes)
+                    {
+                        hash = hash * 31 + h;
+                    }
+                }
+                return hash;
             }
-            return hash;
         }
 
-        public override int GetHashCode()
-        {
-            int hash = 17;
-
-            hash = hash * 31 + ResultIndex;
-            hash = hash * 31 + ResultCount;
-
-            hash = hash * 31 + GetIngredientsCanonicalHash();
-
-            return hash;
-        }
-
-        public override bool Equals(object obj)
-        {
-            return obj is ChefRecipe other && Equals(other);
-        }
+        public override int GetHashCode() => _cachedHash;
+        public override bool Equals(object obj) => obj is ChefRecipe other && Equals(other);
 
         public bool Equals(ChefRecipe other)
         {
-            if (other == null) return false;
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
 
-            if (ResultIndex != other.ResultIndex ||
-                ResultCount != other.ResultCount)
-            {
-                return false;
-            }
+            if (_cachedHash != other._cachedHash) return false;
 
-            if (GetIngredientsCanonicalHash() != other.GetIngredientsCanonicalHash())
+            if (ResultIndex != other.ResultIndex || ResultCount != other.ResultCount) return false;
+            if (Ingredients.Length != other.Ingredients.Length) return false;
+
+            var thisIng = Ingredients.OrderBy(i => i.UnifiedIndex).ToArray();
+            var otherIng = other.Ingredients.OrderBy(i => i.UnifiedIndex).ToArray();
+
+            for (int i = 0; i < thisIng.Length; i++)
             {
-                return false;
+                if (!thisIng[i].Equals(otherIng[i])) return false;
             }
 
             return true;

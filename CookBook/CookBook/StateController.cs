@@ -52,7 +52,6 @@ namespace CookBook
             Run.onRunDestroyGlobal += OnRunDestroy;
             Stage.onStageStartGlobal += OnStageStart;
 
-            DialogueHooks.Init(_log);
             DialogueHooks.ChefUiOpened += OnChefUiOpened;
             DialogueHooks.ChefUiClosed += OnChefUiClosed;
         }
@@ -228,7 +227,7 @@ namespace CookBook
             {
                 if (StateController.IsAutoCrafting)
                 {
-                    if (Input.GetKey(KeyCode.LeftAlt))
+                    if (CookBook.AbortKey.Value.IsPressed())
                     {
                         _abortTimer += Time.deltaTime;
                         if (_abortTimer >= ABORT_THRESHOLD)
@@ -274,7 +273,7 @@ namespace CookBook
         //--------------------------------------- Coroutines ---------------------------------------------
         private static System.Collections.IEnumerator ThrottledComputeRoutine(int[] unifiedStacks)
         {
-            yield return new WaitForSecondsRealtime(0.15f);
+            yield return new WaitForSecondsRealtime(CookBook.ComputeThrottle.Value);
             if (_planner == null) yield break;
             if (InventoryTracker.LastItemCountUsed != _planner.SourceItemCount)
             {

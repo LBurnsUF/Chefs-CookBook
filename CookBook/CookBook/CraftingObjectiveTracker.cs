@@ -7,66 +7,90 @@ namespace CookBook
 {
     internal static class CraftingObjectiveTracker
     {
-        private static string _currentObjectiveText = string.Empty;
+        private static readonly List<ObjectiveToken> _activeObjectives = new List<ObjectiveToken>();
 
-        /// <summary>
-        /// Updates the text shown on the local player's objective HUD.
-        /// </summary>
-        public static string CurrentObjectiveText
+        public class ObjectiveToken : ScriptableObject
         {
-            get => _currentObjectiveText;
-            set => _currentObjectiveText = value;
+            public string RawText;
+
+            public void UpdateText(string text)
+            {
+                RawText = text;
+            }
+
+            public void Complete()
+            {
+                CraftingObjectiveTracker.RemoveToken(this);
+                Destroy(this);
+            }
         }
 
         internal static void Init()
         {
-            // Subscribe to the global objective collector
             ObjectivePanelController.collectObjectiveSources += OnCollectObjectiveSources;
         }
 
         internal static void Cleanup()
         {
             ObjectivePanelController.collectObjectiveSources -= OnCollectObjectiveSources;
-            _currentObjectiveText = string.Empty;
+            foreach (var token in _activeObjectives)
+            {
+                if (token) Object.Destroy(token);
+            }
+            _activeObjectives.Clear();
+        }
+
+        internal static ObjectiveToken CreateObjective(string message)
+        {
+            var token = ScriptableObject.CreateInstance<ObjectiveToken>();
+            token.RawText = message;
+            _activeObjectives.Add(token);
+            return token;
+        }
+
+        private static void RemoveToken(ObjectiveToken token)
+        {
+            if (_activeObjectives.Contains(token)) _activeObjectives.Remove(token);
         }
 
         private static void OnCollectObjectiveSources(CharacterMaster viewerMaster, List<ObjectivePanelController.ObjectiveSourceDescriptor> output)
         {
             if (viewerMaster != LocalUserManager.GetFirstLocalUser()?.cachedMaster) return;
 
-            if (!string.IsNullOrEmpty(_currentObjectiveText))
+            for (int i = _activeObjectives.Count - 1; i >= 0; i--)
             {
+                var token = _activeObjectives[i];
+                if (!token)
+                {
+                    _activeObjectives.RemoveAt(i);
+                    continue;
+                }
+
                 output.Add(new ObjectivePanelController.ObjectiveSourceDescriptor
                 {
-                    source = viewerMaster,
+                    source = token,
                     master = viewerMaster,
                     objectiveType = typeof(ChefObjectiveTracker)
                 });
             }
         }
 
-        internal static void SetObjective(string message, bool canAbort = false)
-        {
-            if (string.IsNullOrEmpty(message))
-            {
-                CurrentObjectiveText = string.Empty;
-                return;
-            }
-
-            if (canAbort)
-            {
-                CurrentObjectiveText = $"{message} <style=cSub>(Hold left alt to Cancel)</style>";
-            }
-            else
-            {
-                CurrentObjectiveText = message;
-            }
-        }
-
         private class ChefObjectiveTracker : ObjectivePanelController.ObjectiveTracker
         {
-            protected override bool IsDirty() => cachedString != CurrentObjectiveText;
-            protected override string GenerateString() => CurrentObjectiveText;
+            private ObjectiveToken MyToken => sourceDescriptor.source as ObjectiveToken;
+
+            protected override bool IsDirty()
+            {
+                return MyToken != null && cachedString != GenerateString();
+            }
+
+            protected override string GenerateString()
+            {
+                if (!MyToken) return string.Empty;
+
+                string keyName = CookBook.AbortKey.Value.MainKey.ToString();
+                return $"{MyToken.RawText} <style=cSub>(Hold {keyName} to Cancel)</style>";
+            }
         }
     }
 }

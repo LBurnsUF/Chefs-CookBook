@@ -48,9 +48,9 @@ namespace CookBook
         }
 
         // ---------------------- Tier Events ----------------------------
-        internal static void OnTierOrderConfigChanged(object _, EventArgs __)
+        internal static void OnTierPriorityChanged(object sender, EventArgs e)
         {
-            TierManager.SetOrder(TierManager.ParseTierOrder(CookBook.TierOrder.Value));
+            OnTierOrderChanged?.Invoke();
         }
 
         // ---------------------- Runtime Helpers ----------------------------
@@ -179,18 +179,77 @@ namespace CookBook
         /// 
         internal static int Rank(ItemTier tier)
         {
-            _seenTiers.Add(tier);
-
-            if (_orderMap.TryGetValue(tier, out int rank))
+            int bucketWeight = 500;
+            if (CookBook.TierPriorities.TryGetValue(tier, out var configEntry))
             {
-                return rank;
+                bucketWeight = (int)configEntry.Value * 100;
             }
 
-            // Default: unknown/modded tiers after natives
-            return _orderMap.Count + (int)tier;
+            int tieBreaker = 50;
+            if (_orderMap.TryGetValue(tier, out int csvPosition))
+            {
+                tieBreaker = csvPosition;
+            }
+
+            return bucketWeight + tieBreaker;
         }
 
         // ---------------------- Helpers ----------------------------
+        private static readonly Dictionary<string, string> FriendlyTierNames = new()
+{
+            { "Tier1", "Common" },
+            { "Tier2", "Uncommon" },
+            { "Tier3", "Legendary" },
+            { "Boss", "Boss" },
+            { "Lunar", "Lunar" },
+            { "VoidTier1", "Void Common" },
+            { "VoidTier2", "Void Uncommon" },
+            { "VoidTier3", "Void Legendary" },
+            { "AssignedAtRuntime", "Adaptive" },
+            { "NoTier", "Misc" },
+            { "FoodTier", "Chef Ingredients" },
+            { "VoidBoss", "Void Boss" }
+        };
+
+        public static TierPriority GetDefaultPriorityForTier(ItemTier tier)
+        {
+            if (tier == ItemTier.Tier3 || tier == ItemTier.VoidTier3) return TierPriority.Highest;
+            if (tier == ItemTier.Boss) return TierPriority.High;
+            if (tier == ItemTier.Tier2 || tier == ItemTier.VoidTier2) return TierPriority.Medium;
+            if (tier == ItemTier.Tier1 || tier == ItemTier.VoidTier1) return TierPriority.Low;
+            return TierPriority.Lowest;
+        }
+
+        public enum TierPriority
+        {
+            Highest,
+            High,
+            Medium,
+            Low,
+            Lowest
+        }
+
+        public static string GetFriendlyName(ItemTier tier)
+        {
+            string internalName = tier.ToString();
+
+            var tierDef = ItemTierCatalog.GetItemTierDef(tier);
+            if (tierDef != null && !string.IsNullOrEmpty(tierDef.name))
+            {
+                internalName = tierDef.name;
+            }
+
+            if (internalName.EndsWith("Def"))
+                internalName = internalName.Substring(0, internalName.Length - 3);
+            if (internalName.EndsWith(" Tier Def"))
+                internalName = internalName.Replace(" Tier Def", "");
+
+            if (FriendlyTierNames.TryGetValue(internalName, out var friendly))
+                return friendly;
+
+            return System.Text.RegularExpressions.Regex.Replace(internalName, "([a-z])([A-Z])", "$1 $2");
+        }
+
         private static Dictionary<ItemTier, int> BuildMapFrom(ItemTier[] arr)
         {
             var map = new Dictionary<ItemTier, int>(arr.Length);

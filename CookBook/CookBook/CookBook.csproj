@@ -20,6 +20,7 @@
 		<Compile Include="SettingsUI.cs" />
 		<Compile Include="StateController.cs" />
 		<Compile Include="TierManager.cs" />
+		<Compile Include="TradeTracker.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -53,6 +54,10 @@
 		</Reference>
 		<Reference Include="UnityEngine.UI">
 			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\UnityEngine.UI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="RiskOfOptions">
+			<HintPath>C:\Users\logan\AppData\Roaming\r2modmanPlus-local\RiskOfRain2\profiles\Default\BepInEx\plugins\Rune580-Risk_Of_Options\RiskOfOptions\RiskOfOptions.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 	</ItemGroup>

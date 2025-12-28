@@ -36,6 +36,7 @@ namespace CookBook
             _initialized = true;
             _log = log;
 
+            TradeTracker.Init();
             PickupCatalog.availability.CallWhenAvailable(BuildScrapLookup);
         }
 
@@ -60,14 +61,8 @@ namespace CookBook
                     }
                 }
             }
-            _log.LogInfo($"InventoryTracker: Native mapping complete. {_tierToScrapItemIdx.Count} tiers supported.");
         }
 
-        private static int MapTierToScrapIndex(ItemTier tier)
-        {
-            if (_tierToScrapItemIdx.TryGetValue(tier, out var index)) return (int)index;
-            return -1;
-        }
 
         //--------------------------------------- Status Control ----------------------------------------
         /// <summary>
@@ -82,6 +77,7 @@ namespace CookBook
 
             CharacterBody.onBodyStartGlobal += OnBodyStart;
             MinionOwnership.onMinionGroupChangedGlobal += OnMinionGroupChanged;
+            Inventory.onInventoryChangedGlobal += OnGlobalInventoryChanged;
 
             if (TryBindFromExistingBodies()) CharacterBody.onBodyStartGlobal -= OnBodyStart;
         }
@@ -96,17 +92,28 @@ namespace CookBook
 
             CharacterBody.onBodyStartGlobal -= OnBodyStart;
             MinionOwnership.onMinionGroupChangedGlobal += OnMinionGroupChanged;
+            Inventory.onInventoryChangedGlobal -= OnGlobalInventoryChanged;
 
             // clear stale user
-            if (_localInventory != null)
-            {
-                _localInventory.onInventoryChanged -= OnLocalInventoryChanged;
-                _localInventory = null;
-            }
+            if (_localInventory != null) _localInventory.onInventoryChanged -= OnLocalInventoryChanged;
+            _localInventory = null;
             _snapshot = default;
         }
 
         //--------------------------------------- Event Logic ----------------------------------------
+        private static void OnGlobalInventoryChanged(Inventory inv)
+        {
+            if (CookBook.AllowMultiplayerPooling.Value || inv == _localInventory)
+            {
+                UpdateSnapshot();
+            }
+        }
+        private static void OnLocalInventoryChanged()
+        {
+            if (!_enabled || _localInventory == null) return;
+            UpdateSnapshot();
+        }
+
         private static void OnMinionGroupChanged(MinionOwnership minion)
         {
             if (!_enabled || _localInventory == null || minion == null) return;
@@ -137,25 +144,54 @@ namespace CookBook
             }
         }
 
-        private static void OnLocalInventoryChanged()
-        {
-            if (!_enabled || _localInventory == null) return;
-            SnapshotFromInventory(_localInventory);
-        }
+        public static void TriggerUpdate() => UpdateSnapshot();
 
         //--------------------------------------- Snapshot Logic  ----------------------------------------
-        private static void SnapshotFromInventory(Inventory inv)
+        private static void UpdateSnapshot()
         {
-            _scrapToBestCandidate.Clear();
+            if (!_enabled || _localInventory == null) return;
 
+            _scrapToBestCandidate.Clear();
             int itemLen = ItemCatalog.itemCount;
             LastItemCountUsed = itemLen;
             int totalLen = itemLen + EquipmentCatalog.equipmentCount;
 
-            var physical = new int[totalLen];
-            var dronePotential = new int[totalLen];
+            int[] localPhysical = GetUnifiedStacksFor(_localInventory);
+            int[] dronePotential = CalculateDroneScrapPotential(_localInventory.GetComponent<CharacterMaster>()?.GetBody(), _scrapToBestCandidate);
 
-            for (int i = 0; i < itemLen; i++) physical[i] = inv.GetItemCountPermanent((ItemIndex)i);
+            int[] combinedTotal = new int[totalLen];
+            for (int i = 0; i < totalLen; i++) combinedTotal[i] = localPhysical[i] + dronePotential[i];
+
+            if (CookBook.AllowMultiplayerPooling.Value)
+            {
+                var localUser = GetLocalUser();
+                foreach (var playerController in PlayerCharacterMasterController.instances)
+                {
+                    var netUser = playerController.networkUser;
+                    if (!netUser || netUser.localUser == localUser) continue;
+
+                    var master = playerController.master;
+                    if (!master || !master.inventory) continue;
+
+                    if (TradeTracker.GetRemainingTrades(netUser) > 0)
+                    {
+                        int[] alliedStacks = GetUnifiedStacksFor(master.inventory);
+                        for (int i = 0; i < totalLen; i++) combinedTotal[i] += alliedStacks[i];
+                    }
+                }
+            }
+
+            _snapshot = new InventorySnapshot(localPhysical, dronePotential, combinedTotal, new Dictionary<int, DroneIndex>(_scrapToBestCandidate));
+            OnInventoryChanged?.Invoke((int[])combinedTotal.Clone());
+        }
+
+        private static int[] GetUnifiedStacksFor(Inventory inv)
+        {
+            int itemLen = ItemCatalog.itemCount;
+            int totalLen = itemLen + EquipmentCatalog.equipmentCount;
+            int[] stacks = new int[totalLen];
+
+            for (int i = 0; i < itemLen; i++) stacks[i] = inv.GetItemCountPermanent((ItemIndex)i);
 
             int slotCount = inv.GetEquipmentSlotCount();
             for (int slot = 0; slot < slotCount; slot++)
@@ -164,28 +200,10 @@ namespace CookBook
                 if (state.equipmentIndex != EquipmentIndex.None)
                 {
                     int unifiedIndex = itemLen + (int)state.equipmentIndex;
-                    if (unifiedIndex < totalLen) physical[unifiedIndex] += 1;
+                    if (unifiedIndex < totalLen) stacks[unifiedIndex] += 1;
                 }
             }
-
-            var master = inv.GetComponent<CharacterMaster>();
-            var body = master ? master.GetBody() : null;
-            if (body)
-            {
-                dronePotential = CalculateDroneScrapPotential(body, _scrapToBestCandidate);
-            }
-
-            var total = new int[totalLen];
-            for (int i = 0; i < totalLen; i++) total[i] = physical[i] + dronePotential[i];
-
-            _snapshot = new InventorySnapshot(
-                physical,
-                dronePotential,
-                total,
-                new Dictionary<int, DroneIndex>(_scrapToBestCandidate)
-            );
-
-            OnInventoryChanged?.Invoke((int[])total.Clone());
+            return stacks;
         }
 
         private static int[] CalculateDroneScrapPotential(CharacterBody body, Dictionary<int, DroneIndex> candidateMap)
@@ -227,20 +245,6 @@ namespace CookBook
             return droneStacks;
         }
 
-        /// <summary>
-        /// Returns the ID of the cheapest owned drone that provides this scrap tier.
-        /// </summary>
-        internal static DroneIndex GetScrapCandidate(int scrapIdx)
-        {
-            if (_snapshot.CheapestDrones != null && _snapshot.CheapestDrones.TryGetValue(scrapIdx, out var id))
-                return id;
-            return DroneIndex.None;
-        }
-
-        internal static int GetPhysicalCount(int index) => (_snapshot.PhysicalStacks != null && index < _snapshot.PhysicalStacks.Length) ? _snapshot.PhysicalStacks[index] : 0;
-        internal static int GetDronePotentialCount(int index) => (_snapshot.DronePotential != null && index < _snapshot.DronePotential.Length) ? _snapshot.DronePotential[index] : 0;
-        internal static int[] GetUnifiedStacksCopy() => (_snapshot.TotalStacks != null) ? (int[])_snapshot.TotalStacks.Clone() : Array.Empty<int>();
-
         //----------------------------------- Binding Logic -----------------------------------
         /// <summary>
         /// Binds to localuser when body is spawned, ignoring other bodies.
@@ -255,7 +259,7 @@ namespace CookBook
                 _log.LogInfo("InventoryTracker.OnBodyStart(): Binding complete, unsubscribed from onBodyStartGlobal.");
 
                 RebindLocal(body.inventory);
-                SnapshotFromInventory(_localInventory);
+                UpdateSnapshot();
             }
         }
 
@@ -271,7 +275,7 @@ namespace CookBook
                     _log.LogInfo($"InventoryTracker.TryBindFromExistingBodies(): late binding to body {body.name}.");
 
                     RebindLocal(body.inventory);
-                    SnapshotFromInventory(_localInventory);
+                    UpdateSnapshot();
                     return true;
                 }
             }
@@ -295,7 +299,61 @@ namespace CookBook
             return list.Count > 0 ? list[0] : null;
         }
 
-        // TODO: add get all player characters
+        //--------------------------------- Helpers ------------------------------------------
+        private static int MapTierToScrapIndex(ItemTier tier)
+        {
+            if (_tierToScrapItemIdx.TryGetValue(tier, out var index)) return (int)index;
+            return -1;
+        }
+
+        /// <summary>
+        /// Returns the ID of the cheapest owned drone that provides this scrap tier.
+        /// </summary>
+        internal static DroneIndex GetScrapCandidate(int scrapIdx)
+        {
+            if (_snapshot.CheapestDrones != null && _snapshot.CheapestDrones.TryGetValue(scrapIdx, out var id))
+                return id;
+            return DroneIndex.None;
+        }
+
+        internal static int GetPhysicalCount(int index) => (_snapshot.PhysicalStacks != null && index < _snapshot.PhysicalStacks.Length) ? _snapshot.PhysicalStacks[index] : 0;
+        internal static int GetDronePotentialCount(int index) => (_snapshot.DronePotential != null && index < _snapshot.DronePotential.Length) ? _snapshot.DronePotential[index] : 0;
+
+        /// <summary>
+        /// Returns the aggregate stack (Local Items + Drones + Pooled Allied Items).
+        /// Used by the planner for the initial "Is this possible?" BFS check.
+        /// </summary>
+        internal static int[] GetUnifiedStacksCopy() => (_snapshot.TotalStacks != null) ? (int[])_snapshot.TotalStacks.Clone() : Array.Empty<int>();
+
+        /// <summary>
+        /// Returns only what the local player physically owns (Items + Equipment).
+        /// Used to determine if a TradeStep is actually required.
+        /// </summary>
+        internal static int[] GetLocalPhysicalStacks() => (_snapshot.PhysicalStacks != null) ? (int[])_snapshot.PhysicalStacks.Clone() : Array.Empty<int>();
+
+        /// <summary>
+        /// Provides the planner with specific snapshots of allied inventories.
+        /// Necessary for identifying which player can provide a specific ingredient.
+        /// </summary>
+        internal static Dictionary<NetworkUser, int[]> GetAlliedSnapshots()
+        {
+            var alliedData = new Dictionary<NetworkUser, int[]>();
+            if (!CookBook.AllowMultiplayerPooling.Value) return alliedData;
+
+            var localUser = GetLocalUser();
+            foreach (var playerController in PlayerCharacterMasterController.instances)
+            {
+                var netUser = playerController.networkUser;
+                if (!netUser || netUser.localUser == localUser) continue;
+
+                var master = playerController.master;
+                if (master?.inventory != null && TradeTracker.GetRemainingTrades(netUser) > 0)
+                {
+                    alliedData[netUser] = GetUnifiedStacksFor(master.inventory);
+                }
+            }
+            return alliedData;
+        }
     }
 
     //--------------------------------------- Structs  ----------------------------------------
