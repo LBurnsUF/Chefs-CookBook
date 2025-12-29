@@ -269,9 +269,6 @@ namespace CookBook
         private static bool SubmitIngredients(CraftingController controller, ChefRecipe recipe)
         {
             var options = controller.options;
-            HashSet<PickupIndex> available = new HashSet<PickupIndex>();
-
-            foreach (var opt in options) if (opt.available) available.Add(opt.pickup.pickupIndex);
 
             foreach (var ing in recipe.Ingredients)
             {
@@ -279,15 +276,34 @@ namespace CookBook
                     ? PickupCatalog.FindPickupIndex(ing.ItemIndex)
                     : PickupCatalog.FindPickupIndex(ing.EquipIndex);
 
-                if (target == PickupIndex.none || !available.Contains(target))
+                if (target == PickupIndex.none) continue;
+
+                int choiceIndex = -1;
+                for (int j = 0; j < options.Length; j++)
                 {
-                    _log.LogWarning($"[CookBook] Missing ingredient: {target}");
-                    return false;
+                    if (options[j].pickup.pickupIndex == target && options[j].available)
+                    {
+                        choiceIndex = j;
+                        break;
+                    }
                 }
+
+                if (choiceIndex == -1) return false;
 
                 for (int i = 0; i < ing.Count; i++)
                 {
-                    controller.SendToSlot(target.value);
+                    if (UnityEngine.Networking.NetworkServer.active)
+                    {
+                        controller.SendToSlot(target.value);
+                    }
+                    else
+                    {
+                        var promptController = controller.GetComponent<RoR2.NetworkUIPromptController>();
+                        var writer = promptController.BeginMessageToServer();
+                        writer.Write((byte)0); // msgSubmit
+                        writer.Write(choiceIndex);
+                        promptController.FinishMessageToServer(writer);
+                    }
                 }
             }
             return true;
