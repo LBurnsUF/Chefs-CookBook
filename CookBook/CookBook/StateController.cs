@@ -224,11 +224,13 @@ namespace CookBook
 
         internal static void AbortCraft()
         {
-            if (IsAutoCrafting || CraftingObjectiveTracker.HasActiveObjectives())
+            if (IsAutoCrafting)
             {
+                _log.LogInfo("Local craft Abort requested. Signaling teammates...");
+
+                ChatNetworkHandler.SendGlobalAbort();
 
                 CraftingExecutionHandler.Abort();
-                CraftingObjectiveTracker.ClearAllObjectives();
             }
         }
 
