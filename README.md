@@ -25,7 +25,8 @@ Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook 
 - Robust against other mods:
   - Includes hooks to refresh recipe logic at runtime in case a mod wants to be silly and modify recipes AFTER contentpacking...
 - Event system to prompt other mod users if someone is requesting their assistance in a recipe!
-![CookBook Overview](https://raw.githubusercontent.com/LBurnsUF/Chefs-CookBook/refs/heads/master/images/UI.png)
+![Trade Request](images/TradeRequest.png)
+![Trade Sent](images/TradeSent.png)
 ---
 
 ## Controls
@@ -66,7 +67,7 @@ Planned but not yet implemented features include:
   (alphabetical, depth, path count, etc.)
 - Visual polish and UI refinements for UI frontend (this is my first mod, and Unity UI is painful)
 - In-Progress run recipe tracking
-	- Maybe allow users to star a desired result, adding it to the objectives panel for easy remembrance?
+	- allow users to star a desired result, adding it to the objectives panel for easy remembrance?
 
 ---
 

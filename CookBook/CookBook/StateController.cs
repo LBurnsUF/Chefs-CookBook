@@ -218,7 +218,6 @@ namespace CookBook
         {
             if (ActiveCraftingController == controller)
             {
-                _log.LogInfo("Chef UI closed (Observer triggered). Clearing state.");
                 CraftUI.Detach();
                 ActiveCraftingController = null;
             }

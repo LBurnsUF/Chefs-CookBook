@@ -156,6 +156,7 @@ namespace CookBook
             {
                 var validChains = kvp.Value
                     .Where(c => c.ResultIndex == kvp.Key && IsChainEfficient(c))
+                    .Where(c => !(c.Steps.Count == 1 && c.Steps[0] is TradeRecipe))
                     .OrderBy(c => c.DroneCostSparse.Length)
                     .ThenBy(c => c.Depth)
                     .ToList();
@@ -182,6 +183,8 @@ namespace CookBook
         private bool IsCausallyLinked(RecipeChain chain, ChefRecipe next)
         {
             int lastProducedIndex = chain.ResultIndex;
+            bool isScrapChain = lastProducedIndex.ToString().Contains("Scrap") || next.ResultIndex.ToString().Contains("Scrap");
+
             foreach (var ing in next.Ingredients)
             {
                 if (ing.UnifiedIndex == lastProducedIndex) return true;
@@ -193,8 +196,14 @@ namespace CookBook
             if (globalMaxDemand > 1)
             {
                 int surplus = GetNetSurplus(chain, candidateResultIndex);
-
                 if (surplus < globalMaxDemand) return true;
+            }
+
+            if (isScrapChain)
+            {
+                _log.LogDebug($"[Planner-Prune] Pruning step: {chain.ResultIndex} -> {next.ResultIndex}. " +
+                              $"Reason: No direct consumption and Surplus ({GetNetSurplus(chain, candidateResultIndex)}) " +
+                              $">= MaxDemand ({globalMaxDemand})");
             }
 
             return false;

@@ -147,18 +147,6 @@ namespace CookBook
 
                     if (distSqr <= (maxDist * maxDist))
                     {
-                        var targetCanvas = StateController.TargetCraftingObject.GetComponentInChildren<Canvas>();
-                        if (targetCanvas)
-                        {
-                            _log.LogDebug("Disabling the UI component.");
-
-                            targetCanvas.enabled = false;
-                        }
-                        else
-                        {
-                            _log.LogDebug("targetCanvas is null.");
-
-                        }
                         interactor.AttemptInteraction(StateController.TargetCraftingObject);
                     }
                     yield return new WaitForSeconds(0.2f);
