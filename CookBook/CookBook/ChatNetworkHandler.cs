@@ -64,26 +64,32 @@ namespace CookBook
         {
             try
             {
-                string[] parts = data.Split(':');
-                if (parts.Length < 5) return; // Increased to 5 parts
+                string cleanData = data;
+                int closingTag = data.IndexOf('<');
+                if (closingTag != -1) cleanData = data.Substring(0, closingTag);
 
-                uint senderID = uint.Parse(parts[0]);
-                uint targetID = uint.Parse(parts[1]);
+                string[] parts = cleanData.Split(':');
+                if (parts.Length < 5) return;
+
+                if (!uint.TryParse(parts[0], out uint senderID)) return;
+                if (!uint.TryParse(parts[1], out uint targetID)) return;
+
                 string cmd = parts[2].ToUpper();
-                int idx = int.Parse(parts[3]);
-                int qty = int.Parse(parts[4]);
+
+                if (!int.TryParse(parts[3], out int idx)) return;
+                if (!int.TryParse(parts[4], out int qty)) return;
 
                 var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
                 if (localUser != null && localUser.netId.Value == targetID)
                 {
-                    // Find the sender by their NetID to get their username
                     var senderUser = NetworkUser.readOnlyInstancesList
                         .FirstOrDefault(u => u.netId.Value == senderID);
 
+                    _log.LogDebug($"[Net In] Valid packet from {senderUser?.userName ?? "Unknown"}: {cmd}");
                     OnIncomingObjective?.Invoke(senderUser, cmd, idx, qty);
                 }
             }
-            catch (Exception e) { _log.LogError($"[Net] Parse Error: {e.Message}"); }
+            catch (Exception e) { _log.LogError($"[Net] Parse Error: {e.Message} | Raw Data: {data}"); }
         }
     }
 }
