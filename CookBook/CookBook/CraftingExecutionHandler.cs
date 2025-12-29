@@ -166,60 +166,43 @@ namespace CookBook
                     yield return new WaitForSeconds(0.2f);
                 }
 
-                // 3. Process the next step
                 if (StateController.ActiveCraftingController != null)
                 {
-                    // PEEK instead of DEQUEUE so the step isn't lost on sync failure
-                    ChefRecipe step = craftQueue.Peek();
+                    ChefRecipe step = craftQueue.Dequeue();
                     string stepName = GetStepName(step);
                     SetObjectiveText($"Processing {stepName}...");
 
-                    // Silence Planner/UI updates during submission
                     StateController.BatchMode = true;
+
                     StateController.ActiveCraftingController.ClearAllSlots();
 
-                    // Attempt synchronous submission
-                    bool submitSuccess = SubmitIngredients(StateController.ActiveCraftingController, step);
-
-                    if (submitSuccess)
+                    if (SubmitIngredients(StateController.ActiveCraftingController, step))
                     {
-                        // Hardened wait with a timeout for client/server sync
-                        float syncTimeout = 2.0f;
-                        while (StateController.ActiveCraftingController != null &&
-                               !StateController.ActiveCraftingController.AllSlotsFilled() &&
-                               syncTimeout > 0)
+                        if (!UnityEngine.Networking.NetworkServer.active)
                         {
-                            syncTimeout -= Time.deltaTime;
-                            yield return null; // Logic frame
+                            yield return new WaitForFixedUpdate();
                         }
 
-                        // Verify final state before confirmation
-                        var controller = StateController.ActiveCraftingController;
-                        if (controller != null && controller.AllSlotsFilled())
+                        if (StateController.ActiveCraftingController.AllSlotsFilled())
                         {
-                            _log.LogInfo($"[Execution] {stepName} verified. Confirming.");
-
-                            // Success: Finally remove it from the queue
-                            craftQueue.Dequeue();
+                            _log.LogInfo($"[Execution] {stepName} verified and confirmed.");
 
                             lastQty = step.ResultCount;
                             lastPickup = GetPickupIndex(step);
 
-                            controller.ConfirmSelection();
-                            CraftUI.CloseCraftPanel(controller);
-
-                            StateController.BatchMode = false;
-                            StateController.ForceRebuild();
-
-                            if (craftQueue.Count > 0) yield return new WaitForSeconds(0.1f);
-                            continue;
+                            StateController.ActiveCraftingController.ConfirmSelection();
+                            CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
+                        }
+                        else
+                        {
+                            _log.LogWarning($"[Execution] {stepName} failed verification. Check network logs.");
                         }
                     }
 
-                    // If we reach here, submission failed, timed out, or UI closed
-                    _log.LogWarning($"[Execution] {stepName} failed to sync. Retrying step...");
                     StateController.BatchMode = false;
-                    yield return new WaitForSeconds(0.2f); // Short retry buffer
+                    StateController.ForceRebuild(); //
+
+                    if (craftQueue.Count > 0) yield return new WaitForSeconds(0.1f);
                 }
             }
 
