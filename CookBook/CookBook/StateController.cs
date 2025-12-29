@@ -1,6 +1,7 @@
 ﻿using BepInEx.Logging;
 using RoR2;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -264,10 +265,7 @@ namespace CookBook
         //--------------------------------------- Helpers ----------------------------------------
         internal static void ForceRebuild()
         {
-            if (_planner != null && IsChefStage())
-            {
-                _planner.ComputeCraftable(InventoryTracker.GetUnifiedStacksCopy(), null, true);
-            }
+            if (_planner != null && IsChefStage()) _planner.ComputeCraftable(InventoryTracker.GetUnifiedStacksCopy(), null, false);
         }
 
         /// <summary>
@@ -296,17 +294,21 @@ namespace CookBook
         }
 
         //--------------------------------------- Coroutines ---------------------------------------------
-        private static System.Collections.IEnumerator ThrottledComputeRoutine(int[] unifiedStacks)
+        private static IEnumerator ThrottledComputeRoutine(int[] unifiedStacks)
         {
             yield return new WaitForSecondsRealtime(CookBook.ComputeThrottle.Value);
             if (_planner == null) yield break;
+
             if (InventoryTracker.LastItemCountUsed != _planner.SourceItemCount)
             {
                 RecipeProvider.Rebuild();
-                _throttleRoutine = null;
-                yield break;
+                OnRecipesBuilt(RecipeProvider.Recipes);
             }
-            _planner.ComputeCraftable(unifiedStacks);
+            else
+            {
+                _planner.ComputeCraftable(unifiedStacks, null, false);
+            }
+
             _throttleRoutine = null;
         }
 

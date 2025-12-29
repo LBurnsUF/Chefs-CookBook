@@ -16,6 +16,7 @@ namespace CookBook
         private readonly ManualLogSource _log;
 
         private readonly Dictionary<int, List<ChefRecipe>> _recipesByIngredient = new();
+        private readonly HashSet<int> _allIngredientIndices = new();
         private readonly int[] _maxDemand;
 
         private readonly int[] _needsBuffer;
@@ -49,6 +50,7 @@ namespace CookBook
         private void BuildRecipeIndex()
         {
             _recipesByIngredient.Clear();
+            _allIngredientIndices.Clear();
             Array.Clear(_maxDemand, 0, _maxDemand.Length);
 
             _log.LogInfo($"[Planner] Building Demand Index for {_recipes.Count} recipes...");
@@ -57,15 +59,18 @@ namespace CookBook
             {
                 foreach (var ing in r.Ingredients)
                 {
-                    if (ing.Count > _maxDemand[ing.UnifiedIndex])
+                    int idx = ing.UnifiedIndex;
+                    _allIngredientIndices.Add(idx);
+
+                    if (ing.Count > _maxDemand[idx])
                     {
-                        _maxDemand[ing.UnifiedIndex] = ing.Count;
+                        _maxDemand[idx] = ing.Count;
                     }
 
-                    if (!_recipesByIngredient.TryGetValue(ing.UnifiedIndex, out var list))
+                    if (!_recipesByIngredient.TryGetValue(idx, out var list))
                     {
                         list = new List<ChefRecipe>();
-                        _recipesByIngredient[ing.UnifiedIndex] = list;
+                        _recipesByIngredient[idx] = list;
                     }
                     list.Add(r);
                 }
@@ -81,7 +86,7 @@ namespace CookBook
                 bool impacted = false;
                 foreach (var idx in changedIndices)
                 {
-                    if (_recipesByIngredient.ContainsKey(idx) || _entryCache.ContainsKey(idx))
+                    if (_allIngredientIndices.Contains(idx) || _entryCache.ContainsKey(idx))
                     {
                         impacted = true;
                         break;

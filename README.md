@@ -24,7 +24,8 @@ Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook 
 - Backend cleanly separates data, logic, and UI for extensibility
 - Robust against other mods:
   - Includes hooks to refresh recipe logic at runtime in case a mod wants to be silly and modify recipes AFTER contentpacking...
-
+- Event system to prompt other mod users if someone is requesting their assistance in a recipe!
+![CookBook Overview](https://raw.githubusercontent.com/LBurnsUF/Chefs-CookBook/refs/heads/master/images/UI.png)
 ---
 
 ## Controls

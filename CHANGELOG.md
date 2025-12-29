@@ -3,6 +3,13 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.2.4 — 12/29/25
+### Changed
+- Err... I may have accidentally been attempting to call a networked event from the client, which explains why crafting wasnt working on non-host clients in multiplayer... Fixed now!
+- Finalized chat-based networking! invisible to the player, and completely avoids the messy ror2 netcode!
+
+---
+
 ## v1.2.3 — 12/28/25
 ### Changed
 - Added tint for ingredient sources to differentiate self sourced items from traded items. Cleaned up ingredient icon templating to eliminate runtime costs, just instantiation now.
