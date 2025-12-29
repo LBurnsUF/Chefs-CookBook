@@ -23,6 +23,7 @@ namespace CookBook
         private readonly List<Ingredient> _tempPhysList = new();
         private readonly List<Ingredient> _tempDroneList = new();
         private readonly HashSet<int> _dirtyIndices = new();
+        private Dictionary<int, CraftableEntry> _entryCache = new();
 
         internal event Action<List<CraftableEntry>> OnCraftablesUpdated;
 
@@ -71,9 +72,23 @@ namespace CookBook
             }
         }
 
-        public void ComputeCraftable(int[] unifiedStacks)
+        public void ComputeCraftable(int[] unifiedStacks, HashSet<int> changedIndices = null)
         {
-            if (!StateController.IsChefStage() || unifiedStacks == null || unifiedStacks.Length != _totalDefCount) return;
+            if (!StateController.IsChefStage() || unifiedStacks == null) return;
+
+            if (changedIndices != null && changedIndices.Count > 0 && _entryCache.Count > 0)
+            {
+                bool impacted = false;
+                foreach (var idx in changedIndices)
+                {
+                    if (_recipesByIngredient.ContainsKey(idx) || _entryCache.ContainsKey(idx))
+                    {
+                        impacted = true;
+                        break;
+                    }
+                }
+                if (!impacted) return;
+            }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var discovered = new Dictionary<int, List<RecipeChain>>();
@@ -82,7 +97,7 @@ namespace CookBook
 
             foreach (var recipe in _recipes)
             {
-                if (CanAffordRecipe(InventoryTracker.GetUnifiedStacksCopy(), recipe, null))
+                if (CanAffordRecipe(unifiedStacks, recipe, null))
                 {
                     var (phys, drone, trades) = CalculateSplitCosts(null, recipe);
                     if (phys == null) continue;
@@ -105,7 +120,6 @@ namespace CookBook
                 for (int i = 0; i < layerSize; i++)
                 {
                     var existingChain = queue.Dequeue();
-
                     foreach (var nextRecipe in _recipes)
                     {
                         if (!IsCausallyLinked(existingChain, nextRecipe)) continue;
@@ -123,22 +137,16 @@ namespace CookBook
                             AddChainToResults(discovered, queue, newChain);
                         }
                     }
-
-                    if (CookBook.AllowMultiplayerPooling.Value && existingChain.Depth < _maxDepth)
-                    {
-                        InjectTradeRecipes(existingChain, discovered, queue, seenSignatures);
-                    }
                 }
             }
 
-            var finalResult = discovered.Select(kvp =>
+            // 5. Finalize Results and Update Cache
+            _entryCache = discovered.Select(kvp =>
             {
                 var validChains = kvp.Value
-                    .Where(c => c.ResultIndex == kvp.Key)
-                    .Where(IsChainEfficient)
+                    .Where(c => c.ResultIndex == kvp.Key && IsChainEfficient(c))
                     .OrderBy(c => c.DroneCostSparse.Length)
                     .ThenBy(c => c.Depth)
-                    .ThenBy(c => c.AlliedTradeSparse.Length)
                     .ToList();
 
                 if (validChains.Count == 0) return null;
@@ -150,11 +158,13 @@ namespace CookBook
                     MinDepth = validChains[0].Depth,
                     Chains = validChains
                 };
-            }).Where(e => e != null).ToList();
+            }).Where(e => e != null).ToDictionary(e => e.ResultIndex);
 
+            var finalResult = _entryCache.Values.ToList();
             finalResult.Sort(TierManager.CompareCraftableEntries);
+
             sw.Stop();
-            _log.LogInfo($"CraftUI: Computed {finalResult.Count} results in {sw.ElapsedMilliseconds}ms");
+            _log.LogDebug($"[Planner] Delta Rebuild: {sw.ElapsedMilliseconds}ms for {finalResult.Count} entries.");
             OnCraftablesUpdated?.Invoke(finalResult);
         }
 

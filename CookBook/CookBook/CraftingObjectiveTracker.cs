@@ -14,12 +14,14 @@ namespace CookBook
         {
             public string RawText;
             public uint SenderNetID;
+            public int TrackedItemIdx; // Track exactly which item this request is for
             private GameObject _inputWatcher;
 
-            public void Init(string text, uint senderID = 0)
+            public void Init(string text, uint senderID = 0, int itemIdx = -1)
             {
                 RawText = text;
                 SenderNetID = senderID;
+                TrackedItemIdx = itemIdx; // Store the index for surgical clearing
 
                 _inputWatcher = new GameObject("CookBook_ObjectiveWatcher");
                 var watcher = _inputWatcher.AddComponent<CancelWatcher>();
@@ -69,18 +71,26 @@ namespace CookBook
 
         internal static bool HasActiveObjectives() => _activeObjectives.Count > 0;
 
-        internal static ObjectiveToken CreateObjective(string message, uint senderID = 0)
+        internal static ObjectiveToken CreateObjective(string message, uint senderID = 0, int itemIdx = -1)
         {
             var token = ScriptableObject.CreateInstance<ObjectiveToken>();
-            token.Init(message, senderID);
+            token.Init(message, senderID, itemIdx);
             _activeObjectives.Add(token);
             return token;
         }
 
-        /// <summary>
-        /// Clears all objectives originally sent by a specific player.
-        /// Called when an "ABORT" signal is received via ChatNetworkHandler.
-        /// </summary>
+        internal static void ClearSpecificRequest(uint senderID, int itemIdx)
+        {
+            for (int i = _activeObjectives.Count - 1; i >= 0; i--)
+            {
+                var token = _activeObjectives[i];
+                if (token.SenderNetID == senderID && token.TrackedItemIdx == itemIdx)
+                {
+                    token.Complete();
+                }
+            }
+        }
+
         internal static void ClearObjectivesFromSender(uint senderID)
         {
             for (int i = _activeObjectives.Count - 1; i >= 0; i--)
@@ -111,7 +121,7 @@ namespace CookBook
 
             if (!string.IsNullOrEmpty(message))
             {
-                CreateObjective(message, sender.netId.Value);
+                CreateObjective(message, sender.netId.Value, unifiedIdx);
             }
         }
 

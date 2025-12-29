@@ -18,6 +18,15 @@ namespace CookBook
         private static Inventory _localInventory;
         private static InventorySnapshot _snapshot;
 
+        private static int[] _cachedLocalPhysical;
+        private static int[] _cachedGlobalDronePotential;
+        private static bool _dronesDirty = true;
+        private static bool _itemsDirty = true;
+        private static bool _hasSnapshot = false;
+
+        internal static void MarkDronesDirty() => _dronesDirty = true;
+        internal static void MarkItemsDirty() => _itemsDirty = true;
+
         public static int LastItemCountUsed { get; private set; }
 
         // Events
@@ -63,7 +72,6 @@ namespace CookBook
                 }
             }
         }
-
 
         //--------------------------------------- Status Control ----------------------------------------
         /// <summary>
@@ -152,36 +160,51 @@ namespace CookBook
         {
             if (!_enabled || _localInventory == null) return;
 
-            _globalScrapCandidates.Clear();
+            if (!_itemsDirty && !_dronesDirty && _hasSnapshot) return;
+
             int totalLen = ItemCatalog.itemCount + EquipmentCatalog.equipmentCount;
 
-            int[] localPhysical = GetUnifiedStacksFor(_localInventory);
-            int[] globalDronePotential = new int[totalLen];
-
-            int[] combinedTotal = (int[])localPhysical.Clone();
-
-            var localUser = GetLocalUser()?.currentNetworkUser;
-            AccumulateGlobalDrones(localUser, globalDronePotential);
-
-            if (CookBook.AllowMultiplayerPooling.Value)
+            if (_itemsDirty || _cachedLocalPhysical == null)
             {
-                foreach (var playerController in PlayerCharacterMasterController.instances)
-                {
-                    var netUser = playerController.networkUser;
-                    if (!netUser || netUser.localUser == GetLocalUser()) continue;
-
-                    AccumulateGlobalDrones(netUser, globalDronePotential);
-                }
+                _cachedLocalPhysical = GetUnifiedStacksFor(_localInventory);
+                _itemsDirty = false;
             }
 
-            for (int i = 0; i < totalLen; i++) combinedTotal[i] += globalDronePotential[i];
+            if (_dronesDirty || _cachedGlobalDronePotential == null)
+            {
+                _globalScrapCandidates.Clear();
+                _cachedGlobalDronePotential = new int[totalLen];
+
+                var localUser = GetLocalUser()?.currentNetworkUser;
+                AccumulateGlobalDrones(localUser, _cachedGlobalDronePotential);
+
+                if (CookBook.AllowMultiplayerPooling.Value)
+                {
+                    foreach (var playerController in PlayerCharacterMasterController.instances)
+                    {
+                        var netUser = playerController.networkUser;
+                        if (!netUser || netUser.localUser == GetLocalUser()) continue;
+
+                        AccumulateGlobalDrones(netUser, _cachedGlobalDronePotential);
+                    }
+                }
+                _dronesDirty = false;
+            }
+
+            int[] combinedTotal = new int[totalLen];
+            for (int i = 0; i < totalLen; i++)
+            {
+                combinedTotal[i] = _cachedLocalPhysical[i] + _cachedGlobalDronePotential[i];
+            }
 
             _snapshot = new InventorySnapshot(
-                localPhysical,
-                globalDronePotential,
+                (int[])_cachedLocalPhysical.Clone(),
+                (int[])_cachedGlobalDronePotential.Clone(),
                 combinedTotal,
                 new Dictionary<int, DroneCandidate>(_globalScrapCandidates)
             );
+
+            _hasSnapshot = true;
             OnInventoryChanged?.Invoke((int[])combinedTotal.Clone());
         }
 
@@ -189,7 +212,6 @@ namespace CookBook
         {
             if (!user || !user.master) return;
 
-            // Find all minions owned by this master
             var minions = CharacterBody.readOnlyInstancesList
                 .Where(b => b.master && b.master.minionOwnership.ownerMaster == user.master);
 

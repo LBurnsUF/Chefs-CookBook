@@ -73,7 +73,6 @@ namespace CookBook
             var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
             if (!body) { Abort(); yield break; }
 
-            _log.LogInfo("================= PHASE 1: ACQUISITION =================");
             if (chain.DroneCostSparse != null && chain.DroneCostSparse.Length > 0)
             {
                 foreach (var req in chain.DroneCostSparse)
@@ -114,8 +113,6 @@ namespace CookBook
                     ChatNetworkHandler.SendObjectiveSuccess(req.Donor, req.UnifiedIndex);
                 }
             }
-
-            _log.LogInfo("================= PHASE 2: ASSEMBLY =================");
 
             Queue<ChefRecipe> craftQueue = new Queue<ChefRecipe>(chain.Steps.Where(s => !(s is TradeRecipe)));
             PickupIndex lastPickup = PickupIndex.none;
@@ -192,12 +189,7 @@ namespace CookBook
                 SetObjectiveText($"Processing {stepName}...");
 
                 StateController.ActiveCraftingController.ClearAllSlots();
-                if (!SubmitIngredients(StateController.ActiveCraftingController, step))
-                {
-                    _log.LogWarning($"Missing ingredients for {stepName}. Aborting.");
-                    Abort();
-                    yield break;
-                }
+                yield return SubmitIngredientsCoroutine(StateController.ActiveCraftingController, step);
 
                 while (!StateController.ActiveCraftingController.AllSlotsFilled())
                 {
@@ -210,11 +202,30 @@ namespace CookBook
                 lastQty = step.ResultCount;
                 lastPickup = GetPickupIndex(step);
 
-                if (craftQueue.Count > 0) yield return new WaitForSeconds(0.2f);
+                if (craftQueue.Count > 0) yield return new WaitForSeconds(0.1f);
             }
 
             _log.LogInfo("[ExecutionHandler] Chain Complete.");
             Abort();
+        }
+
+        /// <summary>
+        /// Submits items one-by-one with a frame gap to avoid main-thread stutter.
+        /// </summary>
+        private static IEnumerator SubmitIngredientsCoroutine(CraftingController controller, ChefRecipe recipe)
+        {
+            foreach (var ing in recipe.Ingredients)
+            {
+                PickupIndex target = ing.IsItem
+                    ? PickupCatalog.FindPickupIndex(ing.ItemIndex)
+                    : PickupCatalog.FindPickupIndex(ing.EquipIndex);
+
+                if (target != PickupIndex.none)
+                {
+                    controller.SendToSlot(target.value);
+                    yield return new WaitForFixedUpdate();
+                }
+            }
         }
 
         private static IEnumerator HandleAcquisition(PickupIndex pi, int totalNeeded, string actionPrefix)

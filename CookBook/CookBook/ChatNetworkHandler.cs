@@ -76,6 +76,23 @@ namespace CookBook
             RoR2.Console.instance.SubmitCmd(localUser, $"say \"{packet}\"");
         }
 
+        /// <summary>
+        /// Signals to a teammate that a specific requested item has been acquired.
+        /// </summary>
+        public static void SendObjectiveSuccess(NetworkUser target, int unifiedIdx)
+        {
+            if (!_enabled || target == null) return;
+            var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
+            if (!localUser) return;
+
+            // Packet: CB_NET:[MyID]:[TargetID]:SUCCESS:[ItemIdx]:0
+            string packet = $"{NetPrefix}{localUser.netId.Value}:{target.netId.Value}:SUCCESS:{unifiedIdx}:0";
+
+            _log.LogDebug($"[Net Out] Sending Success signal to {target.userName} for item {unifiedIdx}");
+            RoR2.Console.instance.SubmitCmd(localUser, $"say \"{packet}\"");
+        }
+
+
         private static void ParseAndProcess(string data)
         {
             try
@@ -100,6 +117,15 @@ namespace CookBook
                     {
                         _log.LogDebug($"[Net In] Global Abort received from Sender {senderID}");
                         CraftingObjectiveTracker.ClearObjectivesFromSender(senderID);
+                        return;
+                    }
+
+                    if (cmd == "SUCCESS")
+                    {
+                        if (int.TryParse(parts[3], out int itemIdx))
+                        {
+                            CraftingObjectiveTracker.ClearSpecificRequest(senderID, itemIdx);
+                        }
                         return;
                     }
 
