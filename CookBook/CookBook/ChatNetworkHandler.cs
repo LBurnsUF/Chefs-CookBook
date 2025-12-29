@@ -1,8 +1,8 @@
 ﻿using BepInEx.Logging;
 using RoR2;
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using UnityEngine;
 
 namespace CookBook
 {
@@ -11,6 +11,8 @@ namespace CookBook
         private const string NetPrefix = "CB_NET:";
         private static ManualLogSource _log;
         private static bool _enabled;
+        private static readonly Dictionary<uint, float> _pendingAcks = new();
+        private const float AckTimeout = 2.0f;
 
         internal static event Action<NetworkUser, string, int, int> OnIncomingObjective;
         internal static void Init(ManualLogSource log)
@@ -23,7 +25,7 @@ namespace CookBook
             if (_enabled) return;
             _enabled = true;
             On.RoR2.Chat.AddMessage_string += OnAddMessage;
-            _log.LogInfo("ChatNetworkHandler: Enabled (Listening for hidden objectives)");
+            On.RoR2.Chat.UserChatMessage.OnProcessed += OnUserChatMessageProcessed;
         }
 
         internal static void Disable()
@@ -31,7 +33,17 @@ namespace CookBook
             if (!_enabled) return;
             _enabled = false;
             On.RoR2.Chat.AddMessage_string -= OnAddMessage;
-            _log.LogInfo("ChatNetworkHandler: Disabled");
+            On.RoR2.Chat.UserChatMessage.OnProcessed -= OnUserChatMessageProcessed;
+        }
+
+        private static void OnUserChatMessageProcessed(On.RoR2.Chat.UserChatMessage.orig_OnProcessed orig, Chat.UserChatMessage self)
+        {
+            if (self.text != null && self.text.Contains(NetPrefix))
+            {
+                return;
+            }
+
+            orig(self);
         }
 
         public static void SendObjectiveRequest(NetworkUser target, string command, int unifiedIdx, int quantity)
@@ -46,18 +58,73 @@ namespace CookBook
             _log.LogDebug($"[Net Out] Sending packet to {target.userName}: {packet}");
 
             RoR2.Console.instance.SubmitCmd(localUser, $"say \"{packet}\"");
+
+            _pendingAcks[target.netId.Value] = UnityEngine.Time.time;
+            RoR2Application.instance.StopCoroutine(nameof(CheckAckTimeout));
+            RoR2Application.instance.StartCoroutine(CheckAckTimeout(target, unifiedIdx, quantity));
         }
 
-        private static void OnAddMessage(On.RoR2.Chat.orig_AddMessage_string orig, string message)
+        private static System.Collections.IEnumerator CheckAckTimeout(NetworkUser target, int idx, int qty)
         {
-            if (_enabled && message.Contains(NetPrefix))
-            {
-                int index = message.IndexOf(NetPrefix);
-                ParseAndProcess(message.Substring(index + NetPrefix.Length));
+            yield return new UnityEngine.WaitForSeconds(AckTimeout);
 
-                return;
+            if (_pendingAcks.ContainsKey(target.netId.Value))
+            {
+                _pendingAcks.Remove(target.netId.Value);
+                _log.LogInfo($"[Net] No ACK from {target.userName}. Falling back to raw text.");
+
+                SendRawTextFallback(target, idx, qty);
             }
-            orig(message);
+        }
+
+        private static void SendRawTextFallback(NetworkUser target, int unifiedIdx, int qty)
+        {
+            var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
+            if (!localUser || target == null) return;
+
+            string itemName = "Unknown Item";
+            string colorTag = "ffffff";
+
+            if (unifiedIdx < ItemCatalog.itemCount)
+            {
+                ItemIndex itemIdx = (ItemIndex)unifiedIdx;
+                ItemDef itemDef = ItemCatalog.GetItemDef(itemIdx);
+                if (itemDef != null)
+                {
+                    itemName = Language.currentLanguage.GetLocalizedStringByToken(itemDef.nameToken);
+
+                    ItemTierDef tierDef = ItemTierCatalog.GetItemTierDef(itemDef.tier);
+                    if (tierDef != null)
+                    {
+                        colorTag = ColorCatalog.GetColorHexString(tierDef.colorIndex);
+                    }
+                }
+            }
+            else
+            {
+                EquipmentIndex equipIdx = (EquipmentIndex)(unifiedIdx - ItemCatalog.itemCount);
+                EquipmentDef equipDef = EquipmentCatalog.GetEquipmentDef(equipIdx);
+                if (equipDef != null)
+                {
+                    itemName = Language.currentLanguage.GetLocalizedStringByToken(equipDef.nameToken);
+                    colorTag = ColorCatalog.GetColorHexString(equipDef.colorIndex);
+                }
+            }
+
+            string message = $"<color=#d299ff>[CookBook]</color> @{target.userName}, I'm looking for ({qty}) <color=#{colorTag}>{itemName}</color>!";
+
+            Chat.SendBroadcastChat(new Chat.SimpleChatMessage
+            {
+                baseToken = "{0}",
+                paramTokens = new[] { message }
+            });
+        }
+
+        private static void SendAck(uint senderID, string originalCmd)
+        {
+            var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
+            string packet = $"{NetPrefix}{localUser.netId.Value}:{senderID}:ACK:{originalCmd}:0";
+            RoR2.Console.instance.SubmitCmd(localUser, $"say \"{packet}\"");
         }
 
         /// <summary>
@@ -92,6 +159,17 @@ namespace CookBook
             RoR2.Console.instance.SubmitCmd(localUser, $"say \"{packet}\"");
         }
 
+        private static void OnAddMessage(On.RoR2.Chat.orig_AddMessage_string orig, string message)
+        {
+            if (_enabled && message.Contains(NetPrefix))
+            {
+                int index = message.IndexOf(NetPrefix);
+                ParseAndProcess(message.Substring(index + NetPrefix.Length));
+
+                return;
+            }
+            orig(message);
+        }
 
         private static void ParseAndProcess(string data)
         {
@@ -111,8 +189,20 @@ namespace CookBook
                 var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
                 if (localUser == null) return;
 
+                if (cmd == "ACK" && targetID == localUser.netId.Value)
+                {
+                    _log.LogDebug($"[Net In] ACK received from {senderID}. Request confirmed.");
+                    _pendingAcks.Remove(senderID);
+                    return;
+                }
+
                 if (targetID == 0 || localUser.netId.Value == targetID)
                 {
+                    if (cmd != "ACK")
+                    {
+                        SendAck(senderID, cmd);
+                    }
+
                     if (cmd == "ABORT")
                     {
                         _log.LogDebug($"[Net In] Global Abort received from Sender {senderID}");
