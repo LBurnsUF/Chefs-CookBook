@@ -168,41 +168,63 @@ namespace CookBook
 
                 if (StateController.ActiveCraftingController != null)
                 {
-                    ChefRecipe step = craftQueue.Dequeue();
+                    // 1. PEEK: Keep the step in the queue until we are certain the server accepted it
+                    ChefRecipe step = craftQueue.Peek();
                     string stepName = GetStepName(step);
                     SetObjectiveText($"Processing {stepName}...");
 
                     StateController.BatchMode = true;
 
+                    // 2. CLEAR: Clients call the networked version, Host calls directly
                     StateController.ActiveCraftingController.ClearAllSlots();
 
-                    if (SubmitIngredients(StateController.ActiveCraftingController, step))
+                    // 3. SUBMIT: Authoritative network packets (msgSubmit)
+                    bool submitAttempted = SubmitIngredients(StateController.ActiveCraftingController, step);
+
+                    if (submitAttempted)
                     {
-                        if (!UnityEngine.Networking.NetworkServer.active)
+                        // 4. SYNC POLLING: Wait for the Server to replicate the 'ingredients' array back
+                        // We use a timeout to prevent an infinite loop if a packet is dropped
+                        float syncTimeout = 2.0f;
+                        while (StateController.ActiveCraftingController != null &&
+                               !StateController.ActiveCraftingController.AllSlotsFilled() &&
+                               syncTimeout > 0)
                         {
-                            yield return new WaitForFixedUpdate();
+                            syncTimeout -= Time.deltaTime;
+                            // yield return null allows the UI and Network layers to process incoming packets
+                            yield return null;
                         }
 
-                        if (StateController.ActiveCraftingController.AllSlotsFilled())
+                        // 5. VERIFY: Double-check that the hardware state matches the local objective
+                        var controller = StateController.ActiveCraftingController;
+                        if (controller != null && controller.AllSlotsFilled())
                         {
-                            _log.LogInfo($"[Execution] {stepName} verified and confirmed.");
+                            _log.LogInfo($"[Execution] {stepName} verified and server-synced.");
+
+                            // Success: Now we can safely remove it from the queue
+                            craftQueue.Dequeue();
 
                             lastQty = step.ResultCount;
                             lastPickup = GetPickupIndex(step);
 
-                            StateController.ActiveCraftingController.ConfirmSelection();
-                            CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
-                        }
-                        else
-                        {
-                            _log.LogWarning($"[Execution] {stepName} failed verification. Check network logs.");
+                            // 6. FINALIZE: Authoritative confirm (msgConfirm)
+                            controller.ConfirmSelection();
+                            CraftUI.CloseCraftPanel(controller);
+
+                            StateController.BatchMode = false;
+                            StateController.ForceRebuild();
+
+                            if (craftQueue.Count > 0) yield return new WaitForSeconds(0.1f);
+                            continue;
                         }
                     }
 
+                    // 7. RETRY: If we reach here, the sync failed or timed out
+                    _log.LogWarning($"[Execution] {stepName} failed to sync (Server/Client mismatch). Retrying...");
                     StateController.BatchMode = false;
-                    StateController.ForceRebuild(); //
 
-                    if (craftQueue.Count > 0) yield return new WaitForSeconds(0.1f);
+                    // Small buffer before the next interaction attempt to let the network settle
+                    yield return new WaitForSeconds(0.2f);
                 }
             }
 
