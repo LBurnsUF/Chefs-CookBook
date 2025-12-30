@@ -2,6 +2,7 @@
 using RoR2;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CookBook
 {
@@ -29,18 +30,7 @@ namespace CookBook
 
         public CraftPlanner(IReadOnlyList<ChefRecipe> recipes, int maxDepth, ManualLogSource log)
         {
-            if (recipes == null) throw new ArgumentNullException(nameof(recipes));
-            HashSet<ChefRecipe> uniqueRecipes = new HashSet<ChefRecipe>();
-            List<ChefRecipe> recipeList = new List<ChefRecipe>();
-
-            for (int i = 0; i < recipes.Count; i++)
-            {
-                if (uniqueRecipes.Add(recipes[i]))
-                {
-                    recipeList.Add(recipes[i]);
-                }
-            }
-            _recipes = recipeList;
+            _recipes = recipes?.Distinct().ToList() ?? throw new ArgumentNullException(nameof(recipes));
             _maxDepth = maxDepth;
             _itemCount = ItemCatalog.itemCount;
             _totalDefCount = _itemCount + EquipmentCatalog.equipmentCount;
@@ -105,10 +95,9 @@ namespace CookBook
 
                 if (!impacted)
                 {
-                    List<CraftableEntry> resultList = new List<CraftableEntry>(_entryCache.Count);
-                    foreach (var kvp in _entryCache) resultList.Add(kvp.Value);
-                    resultList.Sort(TierManager.CompareCraftableEntries);
-                    OnCraftablesUpdated?.Invoke(resultList);
+                    var cachedResult = _entryCache.Values.ToList();
+                    cachedResult.Sort(TierManager.CompareCraftableEntries);
+                    OnCraftablesUpdated?.Invoke(cachedResult);
                     return;
                 }
             }
@@ -118,23 +107,21 @@ namespace CookBook
             var seenSignatures = new HashSet<long>();
             var queue = new Queue<RecipeChain>();
 
-            ResetBuffers();
-
             foreach (var recipe in _recipes)
             {
-                long initialHash = RecipeChain.CalculateInitialHash(recipe);
-                TallyStep(recipe);
-
-                if (IsProductiveFromBuffers(recipe.ResultIndex) && isAffordableFromBuffers(unifiedStacks))
+                if (CanAffordRecipe(unifiedStacks, recipe, null))
                 {
-                    var (phys, drone, trades) = FinalizeSplitCosts(null, recipe);
-                    if (phys != null)
-                    {
-                        var chain = new RecipeChain(new[] { recipe }, phys, drone, trades, initialHash);
-                        if (seenSignatures.Add(chain.CanonicalSignature)) AddChainToResults(discovered, queue, chain);
-                    }
+                    var (phys, drone, trades) = CalculateSplitCosts(null, recipe);
+                    if (phys == null) continue;
+
+                    var chain = new RecipeChain(new[] { recipe }, phys, drone, trades);
+                    if (seenSignatures.Add(chain.CanonicalSignature)) AddChainToResults(discovered, queue, chain);
                 }
-                UntallyStep(recipe);
+            }
+
+            if (CookBook.AllowMultiplayerPooling.Value)
+            {
+                InjectTradeRecipes(null, discovered, queue, seenSignatures);
             }
 
             for (int d = 2; d <= _maxDepth; d++)
@@ -145,78 +132,48 @@ namespace CookBook
                 for (int i = 0; i < layerSize; i++)
                 {
                     var existingChain = queue.Dequeue();
-
-                    ResetBuffers();
-                    for (int s = 0; s < existingChain.Steps.Count; s++) TallyStep(existingChain.Steps[s]);
-
-                    long currentBaseHash = existingChain.BaseRecipeHash;
-
-                    if (CookBook.AllowMultiplayerPooling.Value)
-                    {
-                        InjectTradeRecipes(existingChain, discovered, queue, seenSignatures);
-                    }
-
                     foreach (var nextRecipe in _recipes)
                     {
-                        long potentialBaseHash = RecipeChain.PredictHash(currentBaseHash, nextRecipe);
-                        if (seenSignatures.Contains(potentialBaseHash)) continue;
-
                         if (!IsCausallyLinked(existingChain, nextRecipe)) continue;
 
-                        TallyStep(nextRecipe);
+                        long newSig = RecipeChain.CalculateSignatureWithPotentialStep(existingChain.Steps, nextRecipe);
+                        if (!seenSignatures.Add(newSig)) continue;
 
-                        if (IsProductiveFromBuffers(nextRecipe.ResultIndex) && isAffordableFromBuffers(unifiedStacks))
+                        if (CanAffordRecipe(unifiedStacks, nextRecipe, existingChain))
                         {
-                            var (phys, drone, trades) = FinalizeSplitCosts(existingChain, nextRecipe);
-                            if (phys != null)
-                            {
-                                ChefRecipe[] extendedSteps = new ChefRecipe[existingChain.Steps.Count + 1];
-                                for (int s = 0; s < existingChain.Steps.Count; s++) extendedSteps[s] = existingChain.Steps[s];
-                                extendedSteps[existingChain.Steps.Count] = nextRecipe;
+                            var (phys, drone, trades) = CalculateSplitCosts(existingChain, nextRecipe);
+                            if (phys == null) continue;
 
-                                var newChain = new RecipeChain(extendedSteps, phys, drone, trades, potentialBaseHash);
-                                if (seenSignatures.Add(newChain.CanonicalSignature)) AddChainToResults(discovered, queue, newChain);
-                            }
+                            var extendedSteps = existingChain.Steps.Concat(new[] { nextRecipe }).ToList();
+                            var newChain = new RecipeChain(extendedSteps, phys, drone, trades);
+
+                            AddChainToResults(discovered, queue, newChain);
                         }
-                        UntallyStep(nextRecipe);
                     }
                 }
             }
 
-            _entryCache.Clear();
-            foreach (var kvp in discovered)
+            _entryCache = discovered.Select(kvp =>
             {
-                int resultIdx = kvp.Key;
-                List<RecipeChain> validChains = new List<RecipeChain>();
+                var validChains = kvp.Value
+                    .Where(c => c.ResultIndex == kvp.Key && IsChainEfficient(c))
+                    .Where(c => !(c.Steps.Count == 1 && c.Steps[0] is TradeRecipe))
+                    .OrderBy(c => c.DroneCostSparse.Length)
+                    .ThenBy(c => c.Depth)
+                    .ToList();
 
-                foreach (var c in kvp.Value)
+                if (validChains.Count == 0) return null;
+
+                return new CraftableEntry
                 {
-                    if (c.ResultIndex != resultIdx || !IsChainEfficient(c)) continue;
-                    if (c.Steps.Count == 1 && c.Steps[0] is TradeRecipe) continue;
-                    validChains.Add(c);
-                }
+                    ResultIndex = kvp.Key,
+                    ResultCount = validChains[0].ResultCount,
+                    MinDepth = validChains[0].Depth,
+                    Chains = validChains
+                };
+            }).Where(e => e != null).ToDictionary(e => e.ResultIndex);
 
-                if (validChains.Count > 0)
-                {
-                    // Sort by lowest drone cost, then lowest depth
-                    validChains.Sort((a, b) =>
-                    {
-                        int droneCompare = a.DroneCostSparse.Length.CompareTo(b.DroneCostSparse.Length);
-                        return droneCompare != 0 ? droneCompare : a.Depth.CompareTo(b.Depth);
-                    });
-
-                    _entryCache[resultIdx] = new CraftableEntry
-                    {
-                        ResultIndex = resultIdx,
-                        ResultCount = validChains[0].ResultCount,
-                        MinDepth = validChains[0].Depth,
-                        Chains = validChains
-                    };
-                }
-            }
-
-            List<CraftableEntry> finalResult = new List<CraftableEntry>(_entryCache.Count);
-            foreach (var entry in _entryCache) finalResult.Add(entry.Value);
+            var finalResult = _entryCache.Values.ToList();
             finalResult.Sort(TierManager.CompareCraftableEntries);
 
             sw.Stop();
@@ -224,20 +181,37 @@ namespace CookBook
             OnCraftablesUpdated?.Invoke(finalResult);
         }
 
-        // ---------------------------- Filters -------------------------------------
         private bool IsCausallyLinked(RecipeChain chain, ChefRecipe next)
         {
+            int lastProducedIndex = chain.ResultIndex;
+
             foreach (var ing in next.Ingredients)
             {
-                if (ing.UnifiedIndex == next.ResultIndex && ing.Count >= next.ResultCount) return false;
-                if (ing.UnifiedIndex == chain.ResultIndex) return true;
+                if (ing.UnifiedIndex == lastProducedIndex) return true;
             }
 
-            int surplus = _productionBuffer[next.ResultIndex] - _needsBuffer[next.ResultIndex];
-            int maxReq = _maxDemand[next.ResultIndex];
+            int candidateResultIndex = next.ResultIndex;
+            int globalMaxDemand = _maxDemand[candidateResultIndex];
 
-            if (maxReq == 0) return surplus <= 0;
-            return surplus < maxReq;
+            if (globalMaxDemand > 1)
+            {
+                int surplus = GetNetSurplus(chain, candidateResultIndex);
+                if (surplus < globalMaxDemand) return true;
+            }
+
+            return false;
+        }
+
+        private int GetNetSurplus(RecipeChain chain, int itemIndex)
+        {
+            int net = 0;
+            foreach (var step in chain.Steps)
+            {
+                if (step.ResultIndex == itemIndex) net += step.ResultCount;
+                foreach (var ing in step.Ingredients)
+                    if (ing.UnifiedIndex == itemIndex) net -= ing.Count;
+            }
+            return net;
         }
 
         private bool IsChainEfficient(RecipeChain chain)
@@ -268,15 +242,30 @@ namespace CookBook
             return true;
         }
 
-        private bool isAffordableFromBuffers(int[] totalStacks)
+        private bool CanAffordRecipe(int[] totalStacks, ChefRecipe recipe, RecipeChain existingChain)
         {
-            foreach (int idx in _dirtyIndices)
+            foreach (var ing in recipe.Ingredients)
             {
-                int net = _needsBuffer[idx] - _productionBuffer[idx];
-                if (net <= 0) continue;
+                int idx = ing.UnifiedIndex;
+                int totalProduced = 0;
+                int totalConsumed = ing.Count;
 
-                if (totalStacks[idx] + InventoryTracker.GetGlobalDronePotentialCount(idx) < net)
-                    return false;
+                if (existingChain != null)
+                {
+                    foreach (var step in existingChain.Steps)
+                    {
+                        if (step.ResultIndex == idx) totalProduced += step.ResultCount;
+                        foreach (var sIng in step.Ingredients) if (sIng.UnifiedIndex == idx) totalConsumed += sIng.Count;
+                    }
+                }
+
+                int netDeficit = totalConsumed - totalProduced;
+                if (netDeficit <= 0) continue;
+
+                int physical = totalStacks[idx];
+                int potential = InventoryTracker.GetGlobalDronePotentialCount(idx);
+
+                if (physical + potential < netDeficit) return false;
             }
             return true;
         }
@@ -284,54 +273,92 @@ namespace CookBook
         private void InjectTradeRecipes(RecipeChain chain, Dictionary<int, List<RecipeChain>> discovered, Queue<RecipeChain> queue, HashSet<long> signatures)
         {
             var alliedSnapshots = InventoryTracker.GetAlliedSnapshots();
+            int[] localPhysical = InventoryTracker.GetLocalPhysicalStacks();
+
             foreach (var ally in alliedSnapshots)
             {
                 int tradesLeft = TradeTracker.GetRemainingTrades(ally.Key);
-                // Sparse count
-                if (chain.AlliedTradeSparse != null)
+
+                if (chain != null)
                 {
-                    for (int i = 0; i < chain.AlliedTradeSparse.Length; i++)
-                        if (chain.AlliedTradeSparse[i].Donor == ally.Key) tradesLeft -= chain.AlliedTradeSparse[i].Count;
+                    tradesLeft -= chain.Steps.OfType<TradeRecipe>().Count(t => t.Donor == ally.Key);
                 }
 
                 if (tradesLeft <= 0) continue;
 
                 int[] inv = ally.Value;
-                foreach (int idx in _allIngredientIndices)
+                for (int idx = 0; idx < inv.Length; idx++)
                 {
-                    // Use buffer for O(1) surplus check
-                    if (inv[idx] > 0 && (_productionBuffer[idx] - _needsBuffer[idx]) < _maxDemand[idx])
+                    if (inv[idx] > 0 && _recipesByIngredient.ContainsKey(idx) && !LocalPhysicallyHasOrProduces(chain, localPhysical, idx))
                     {
                         var trade = new TradeRecipe(ally.Key, idx);
-                        long potentialHash = RecipeChain.PredictHash(chain.BaseRecipeHash, trade);
-                        if (signatures.Contains(potentialHash)) continue;
 
-                        ChefRecipe[] newSteps = AppendTradetoArray(chain.Steps, trade);
-                        TradeRequirement[] tradeReqs = UpdateTradesIncrementally(chain.AlliedTradeSparse, trade);
+                        long sig = chain == null
+                            ? RecipeChain.CalculateCanonicalSignature(new[] { (ChefRecipe)trade })
+                            : RecipeChain.CalculateSignatureWithPotentialStep(chain.Steps, trade);
 
-                        var newChain = new RecipeChain(newSteps, chain.PhysicalCostSparse, chain.DroneCostSparse, tradeReqs, potentialHash);
-                        if (signatures.Add(newChain.CanonicalSignature)) AddChainToResults(discovered, queue, newChain);
+                        if (!signatures.Add(sig)) continue;
+
+                        var newSteps = (chain == null)
+                            ? new List<ChefRecipe> { trade }
+                            : chain.Steps.Concat(new[] { (ChefRecipe)trade }).ToList();
+
+                        // Generate the sparse TradeRequirement array for this new path
+                        var tradeRequirements = newSteps.OfType<TradeRecipe>()
+                            .GroupBy(t => new { t.Donor, t.ItemUnifiedIndex })
+                            .Select(g => new TradeRequirement
+                            {
+                                Donor = g.Key.Donor,
+                                UnifiedIndex = g.Key.ItemUnifiedIndex,
+                                Count = g.Count()
+                            })
+                            .ToArray();
+
+                        var newChain = new RecipeChain(
+                            newSteps,
+                            chain?.PhysicalCostSparse ?? Array.Empty<Ingredient>(),
+                            chain?.DroneCostSparse ?? Array.Empty<Ingredient>(),
+                            tradeRequirements
+                        );
+
+                        AddChainToResults(discovered, queue, newChain);
                     }
                 }
             }
         }
 
-        private ChefRecipe[] AppendTradetoArray(IReadOnlyList<ChefRecipe> existing, ChefRecipe next)
+        private bool LocalPhysicallyHasOrProduces(RecipeChain chain, int[] localInv, int itemIdx)
         {
-            int count = existing.Count;
-            ChefRecipe[] newArray = new ChefRecipe[count + 1];
-            for (int i = 0; i < count; i++)
-            {
-                newArray[i] = existing[i];
-            }
-            newArray[count] = next;
-            return newArray;
+            if (localInv[itemIdx] > 0) return true;
+            if (chain != null && chain.Steps.Any(s => s.ResultIndex == itemIdx)) return true;
+            return false;
         }
 
-        private (Ingredient[] phys, Ingredient[] drone, TradeRequirement[] trades) FinalizeSplitCosts(RecipeChain old, ChefRecipe next)
+        /// <summary>
+        /// Highly optimized cost calculation using reusable array buffers.
+        /// </summary>
+        private (Ingredient[] phys, Ingredient[] drone, TradeRequirement[] trades) CalculateSplitCosts(RecipeChain old, ChefRecipe next)
         {
+            foreach (int idx in _dirtyIndices) { _needsBuffer[idx] = 0; _productionBuffer[idx] = 0; }
+            _dirtyIndices.Clear();
             _tempPhysList.Clear();
             _tempDroneList.Clear();
+
+            if (old != null) foreach (var step in old.Steps) TallyStep(step);
+            TallyStep(next);
+
+            _productionBuffer[next.ResultIndex] -= next.ResultCount;
+
+            var trades = (old != null ? old.Steps.Concat(new[] { next }) : new[] { next })
+                .OfType<TradeRecipe>()
+                .GroupBy(t => new { t.Donor, t.ItemUnifiedIndex })
+                .Select(g => new TradeRequirement
+                {
+                    Donor = g.Key.Donor,
+                    UnifiedIndex = g.Key.ItemUnifiedIndex,
+                    Count = g.Count()
+                })
+                .ToArray();
 
             var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
 
@@ -344,21 +371,30 @@ namespace CookBook
                 int payWithPhysical = Math.Min(physOwned, net);
                 int deficit = net - payWithPhysical;
 
+                int globalDronePotential = InventoryTracker.GetGlobalDronePotentialCount(idx);
                 if (deficit > 0)
                 {
                     int totalPotential = InventoryTracker.GetGlobalDronePotentialCount(idx);
+                    if (deficit > totalPotential) return (null, null, null);
+
                     _tempDroneList.Add(new Ingredient(idx, deficit));
                 }
 
                 if (payWithPhysical > 0) _tempPhysList.Add(new Ingredient(idx, payWithPhysical));
             }
 
-            TradeRequirement[] trades = (next is TradeRecipe newTrade)
-                ? UpdateTradesIncrementally(old?.AlliedTradeSparse, newTrade)
-                : (old?.AlliedTradeSparse ?? Array.Empty<TradeRequirement>());
+            Ingredient[] sortedDrones = _tempDroneList
+                .OrderBy(d =>
+                {
+                    var candidate = InventoryTracker.GetScrapCandidate(d.UnifiedIndex);
+                    bool isLocal = (candidate.Owner == null || candidate.Owner == localUser);
+                    return isLocal ? 1 : 0;
+                })
+                .ToArray();
 
-            return (ManualCopyPhysical(_tempPhysList), ManualSortDrones(_tempDroneList, localUser), trades);
+            return (_tempPhysList.ToArray(), sortedDrones, trades);
         }
+
 
         private void TallyStep(ChefRecipe step)
         {
@@ -371,100 +407,6 @@ namespace CookBook
             }
         }
 
-        private void ResetBuffers()
-        {
-            foreach (int idx in _dirtyIndices)
-            {
-                _needsBuffer[idx] = 0;
-                _productionBuffer[idx] = 0;
-            }
-            _dirtyIndices.Clear();
-        }
-
-        private void UntallyStep(ChefRecipe step)
-        {
-            foreach (var ing in step.Ingredients)
-            {
-                _needsBuffer[ing.UnifiedIndex] -= ing.Count;
-            }
-            _productionBuffer[step.ResultIndex] -= step.ResultCount;
-        }
-
-        private bool IsProductiveFromBuffers(int resultIdx)
-        {
-            return (_productionBuffer[resultIdx] - _needsBuffer[resultIdx]) > 0;
-        }
-
-        private TradeRequirement[] UpdateTradesIncrementally(TradeRequirement[] existing, TradeRecipe newTrade)
-        {
-            if (existing == null || existing.Length == 0)
-            {
-                return new[] { new TradeRequirement { Donor = newTrade.Donor, UnifiedIndex = newTrade.ItemUnifiedIndex, Count = 1 } };
-            }
-
-            for (int i = 0; i < existing.Length; i++)
-            {
-                if (existing[i].Donor == newTrade.Donor && existing[i].UnifiedIndex == newTrade.ItemUnifiedIndex)
-                {
-                    TradeRequirement[] updated = new TradeRequirement[existing.Length];
-                    Array.Copy(existing, updated, existing.Length);
-                    updated[i].Count++;
-                    return updated;
-                }
-            }
-
-            TradeRequirement[] expanded = new TradeRequirement[existing.Length + 1];
-            Array.Copy(existing, expanded, existing.Length);
-            expanded[existing.Length] = new TradeRequirement { Donor = newTrade.Donor, UnifiedIndex = newTrade.ItemUnifiedIndex, Count = 1 };
-            return expanded;
-        }
-
-        // ------------------------------- Sorting -------------------------------------
-        private Ingredient[] ManualSortDrones(List<Ingredient> list, NetworkUser localUser)
-        {
-            if (list.Count == 0) return Array.Empty<Ingredient>();
-            Ingredient[] array = list.ToArray();
-
-            // Simple Insertion Sort: Preferred for the very small arrays typical of drone costs
-            for (int i = 1; i < array.Length; i++)
-            {
-                Ingredient key = array[i];
-                int j = i - 1;
-
-                while (j >= 0 && CompareDronePriority(array[j], key, localUser) > 0)
-                {
-                    array[j + 1] = array[j];
-                    j--;
-                }
-                array[j + 1] = key;
-            }
-            return array;
-        }
-
-        private Ingredient[] ManualCopyPhysical(List<Ingredient> list)
-        {
-            if (list.Count == 0) return Array.Empty<Ingredient>();
-            Ingredient[] result = new Ingredient[list.Count];
-            for (int i = 0; i < list.Count; i++) result[i] = list[i];
-            return result;
-        }
-
-        private int CompareDronePriority(Ingredient a, Ingredient b, NetworkUser localUser)
-        {
-            var candA = InventoryTracker.GetScrapCandidate(a.UnifiedIndex);
-            var candB = InventoryTracker.GetScrapCandidate(b.UnifiedIndex);
-
-            bool isLocalA = (candA.Owner == null || candA.Owner == localUser);
-            bool isLocalB = (candB.Owner == null || candB.Owner == localUser);
-
-            if (isLocalA != isLocalB)
-            {
-                return isLocalA ? -1 : 1;
-            }
-
-            return 0;
-        }
-
         private void AddChainToResults(Dictionary<int, List<RecipeChain>> results, Queue<RecipeChain> queue, RecipeChain chain)
         {
             if (!results.TryGetValue(chain.ResultIndex, out var list))
@@ -475,8 +417,6 @@ namespace CookBook
             list.Add(chain);
             queue.Enqueue(chain);
         }
-
-        // -------------------------------- Types --------------------------------------
 
         internal sealed class TradeRecipe : ChefRecipe
         {
@@ -517,58 +457,45 @@ namespace CookBook
         internal sealed class RecipeChain
         {
             internal IReadOnlyList<ChefRecipe> Steps { get; }
+
             internal Ingredient[] PhysicalCostSparse { get; }
             internal Ingredient[] DroneCostSparse { get; }
             internal TradeRequirement[] AlliedTradeSparse { get; }
-            internal int ResultIndex => Steps.Count > 0 ? Steps[Steps.Count - 1].ResultIndex : -1;
-            internal int ResultCount => Steps.Count > 0 ? Steps[Steps.Count - 1].ResultCount : 0;
+            internal int ResultIndex => Steps.Last().ResultIndex;
+            internal int ResultCount => Steps.Last().ResultCount;
+            internal long CanonicalSignature { get; }
             internal int Depth => Steps.Count;
 
-            internal long BaseRecipeHash { get; }
-            internal long CanonicalSignature { get; }
-
-            internal RecipeChain(ChefRecipe[] steps,
-                                 Ingredient[] phys,
-                                 Ingredient[] drones,
-                                 TradeRequirement[] trades,
-                                 long baseRecipeHash)
+            internal RecipeChain(IEnumerable<ChefRecipe> steps,
+                         IEnumerable<Ingredient> phys,
+                         IEnumerable<Ingredient> drones,
+                         IEnumerable<TradeRequirement> trades)
             {
-                Steps = steps;
-                PhysicalCostSparse = phys;
-                DroneCostSparse = drones;
-                AlliedTradeSparse = trades;
-                BaseRecipeHash = baseRecipeHash;
-
-                CanonicalSignature = CalculateFinalSignature(this);
+                Steps = steps.ToArray();
+                PhysicalCostSparse = phys?.Where(i => i.Count > 0).ToArray() ?? Array.Empty<Ingredient>();
+                DroneCostSparse = drones?.Where(i => i.Count > 0).ToArray() ?? Array.Empty<Ingredient>();
+                AlliedTradeSparse = trades?.ToArray() ?? Array.Empty<TradeRequirement>();
+                CanonicalSignature = CalculateCanonicalSignature(Steps);
             }
 
-            private static long CalculateFinalSignature(RecipeChain chain)
+            internal static long CalculateCanonicalSignature(IReadOnlyList<ChefRecipe> chain)
             {
-                long sig = chain.BaseRecipeHash;
-
-                for (int i = 0; i < chain.DroneCostSparse.Length; i++)
-                {
-                    sig = sig * 31 + chain.DroneCostSparse[i].UnifiedIndex;
-                    sig = sig * 31 + chain.DroneCostSparse[i].Count;
-                }
-
-                for (int i = 0; i < chain.AlliedTradeSparse.Length; i++)
-                {
-                    sig = sig * 31 + chain.AlliedTradeSparse[i].Donor.netId.GetHashCode();
-                    sig = sig * 31 + chain.AlliedTradeSparse[i].UnifiedIndex;
-                }
-
+                if (chain == null || chain.Count == 0) return 0xDEADBEEF;
+                var hashes = chain.Select(r => r.GetHashCode()).ToList();
+                hashes.Sort();
+                long sig = 17;
+                foreach (int h in hashes) sig = sig * 31 + h;
                 return sig;
             }
 
-            internal static long PredictHash(long currentHash, ChefRecipe next)
+            internal static long CalculateSignatureWithPotentialStep(IReadOnlyList<ChefRecipe> currentSteps, ChefRecipe next)
             {
-                return currentHash + (long)next.GetHashCode();
-            }
-
-            internal static long CalculateInitialHash(ChefRecipe recipe)
-            {
-                return (long)recipe.GetHashCode();
+                var hashes = currentSteps.Select(r => r.GetHashCode()).ToList();
+                hashes.Add(next.GetHashCode());
+                hashes.Sort();
+                long signature = 17;
+                foreach (int h in hashes) signature = signature * 31 + h;
+                return signature;
             }
         }
     }
