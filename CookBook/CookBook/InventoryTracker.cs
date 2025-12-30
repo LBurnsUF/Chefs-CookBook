@@ -220,7 +220,7 @@ namespace CookBook
             _remoteDirty = false;
 
             int[] combinedTotal = new int[totalLen];
-            for (int i = 0; i < totalLen; i++) combinedTotal[i] = _cachedLocalPhysical[i] + _cachedGlobalDronePotential[i];
+            for (int i = 0; i < totalLen; i++) combinedTotal[i] = _cachedLocalPhysical[i];
 
             _snapshot = new InventorySnapshot(
                 (int[])_cachedLocalPhysical.Clone(),
