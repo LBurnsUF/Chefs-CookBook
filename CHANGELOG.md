@@ -3,6 +3,14 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.2.5 — 12/29/25
+### Fixed
+- Added inter-client confirmation via networked commands so that non-modded users can still participate (it sends the objective in raw text via chat!)
+- Muted command audio to not play the annoying chat blip on send
+- Further optimized craftplanner backend
+
+---
+
 ## v1.2.4 — 12/29/25
 ### Changed
 - Err... I may have accidentally been attempting to call a networked event from the client, which explains why crafting wasnt working on non-host clients in multiplayer... Fixed now!
