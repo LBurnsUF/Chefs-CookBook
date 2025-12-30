@@ -25,8 +25,8 @@ Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook 
 - Robust against other mods:
   - Includes hooks to refresh recipe logic at runtime in case a mod wants to be silly and modify recipes AFTER contentpacking...
 - Event system to prompt other mod users if someone is requesting their assistance in a recipe!
-![Trade Request](images/TradeRequest.png)
-![Trade Sent](images/TradeSent.png)
+![Trade Request](https://raw.githubusercontent.com/LBurnsUF/Chefs-CookBook/refs/heads/master/images/TradeRequest.png)
+![Trade Sent](https://raw.githubusercontent.com/LBurnsUF/Chefs-CookBook/refs/heads/master/images/TradeSent.png)
 ---
 
 ## Controls

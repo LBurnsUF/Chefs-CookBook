@@ -1,6 +1,6 @@
 {
   "name": "CookBook",
-  "version_number": "1.2.5",
+  "version_number": "1.2.6",
   "website_url": "https://github.com/LBurnsUF/Chefs-CookBook",
   "description": "A quality-of-life mod for Risk of Rain 2 that provides a structured, searchable, and expandable view of craftable items and their possible crafting paths.",
   "dependencies": [

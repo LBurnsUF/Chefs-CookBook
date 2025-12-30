@@ -17,6 +17,7 @@
 		<Compile Include="InventoryTracker.cs" />
 		<Compile Include="Log.cs" />
 		<Compile Include="Plugin.cs" />
+		<Compile Include="RecipeFilter.cs" />
 		<Compile Include="RecipeProvider.cs" />
 		<Compile Include="SettingsUI.cs" />
 		<Compile Include="StateController.cs" />

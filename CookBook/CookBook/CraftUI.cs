@@ -16,7 +16,7 @@ namespace CookBook
     internal static class CraftUI
     {
         private static ManualLogSource _log;
-        private static IReadOnlyList<CraftableEntry> _lastCraftables;
+        internal static IReadOnlyList<CraftableEntry> LastCraftables { get; private set; }
         private static bool _skeletonBuilt = false;
         private static CraftingController _currentController;
 
@@ -57,6 +57,8 @@ namespace CookBook
         private static readonly Dictionary<DroneIndex, Sprite> _droneIconCache = new();
         private static readonly List<RecipeRowUI> _recipeRowUIs = new();
 
+        private static System.Reflection.MethodInfo _onIngredientsChangedMethod;
+
         // ---------------- Layout constants ----------------
         private static float _panelWidth;
         private static float _panelHeight;
@@ -69,7 +71,9 @@ namespace CookBook
         internal const float CookBookPanelElementSpacingNorm = 0.0159744409f; // vertical gap between SearchBar and RecipeList
 
         // SearchBar container
-        internal const float SearchBarHeightNorm = 0.0798722045f;
+        internal const float SearchBarContainerNorm = 0.0798722045f;
+        internal const float SearchBarWidthNorm = 0.8f;
+        internal const float FilterDropDownWidthNorm = 0.2f;
         internal const float SearchBarBottomBorderThicknessNorm = 0.0001f;
 
         // RecipeList internal layout
@@ -261,6 +265,7 @@ namespace CookBook
             _panelHeight = cbRT.rect.height;
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
+            On.RoR2.CraftingController.FilterAvailableOptions += RecipeFilter.InterceptIngredientAvailability;
             CookBookSkeleton(cbRT);
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();
@@ -271,7 +276,7 @@ namespace CookBook
             sw.Stop();
             _log.LogInfo($"CraftUI: Skeleton & Templates built in {sw.ElapsedMilliseconds}ms");
 
-            if (_lastCraftables != null && _lastCraftables.Count > 0) PopulateRecipeList(_lastCraftables);
+            if (LastCraftables != null && LastCraftables.Count > 0) PopulateRecipeList(LastCraftables);
         }
 
         internal static void Detach()
@@ -283,6 +288,7 @@ namespace CookBook
             }
 
             if (_globalCraftButton != null) _globalCraftButton.onClick.RemoveAllListeners();
+            On.RoR2.CraftingController.FilterAvailableOptions -= RecipeFilter.InterceptIngredientAvailability;
             _recipeRowUIs.Clear();
             _iconCache.Clear();
             _droneIconCache.Clear();
@@ -606,7 +612,7 @@ namespace CookBook
             float padRightPx = RoundToEven(CookBookPanelPaddingRightNorm * _panelWidth);
 
             float spacingPx = RoundToEven(CookBookPanelElementSpacingNorm * _panelHeight);
-            float searchBarHeightPx = RoundToEven(SearchBarHeightNorm * _panelHeight);
+            float searchBarHeightPx = RoundToEven(SearchBarContainerNorm * _panelHeight);
             float footerHeightPx = RoundToEven(FooterHeightNorm * _panelHeight);
 
             float innerHeight = _panelHeight - padTopPx - padBottomPx;
@@ -624,55 +630,48 @@ namespace CookBook
             searchRect.anchorMin = new Vector2(0f, 1f);
             searchRect.anchorMax = new Vector2(1f, 1f);
             searchRect.pivot = new Vector2(0.5f, 1f);
-
             searchRect.sizeDelta = new Vector2(0f, searchBarHeightPx);
             searchRect.anchoredPosition = new Vector2(0f, -padTopPx);
+            searchRect.offsetMin = new Vector2(padLeftPx, searchRect.offsetMin.y);
+            searchRect.offsetMax = new Vector2(-padRightPx, searchRect.offsetMax.y);
 
-            var currentMin = searchRect.offsetMin;
-            var currentMax = searchRect.offsetMax;
-            currentMin.x = padLeftPx;
-            currentMax.x = -padRightPx;
-            searchRect.offsetMin = currentMin;
-            searchRect.offsetMax = currentMax;
+            AddBorderTapered(searchRect, new Color32(209, 209, 210, 200), bottom: Mathf.Max(1f, SearchBarBottomBorderThicknessNorm * _panelHeight));
 
+            // --- Search Input ---
             GameObject inputGO = CreateUIObject("SearchInput", typeof(RectTransform), typeof(Image), typeof(TMP_InputField));
-
             var inputRect = inputGO.GetComponent<RectTransform>();
-            var bgImage = inputGO.GetComponent<Image>();
-            _searchInputField = inputGO.GetComponent<TMP_InputField>();
-
             inputRect.SetParent(searchRect, false);
             inputRect.anchorMin = Vector2.zero;
-            inputRect.anchorMax = Vector2.one;
-            inputRect.sizeDelta = Vector2.zero;
-            inputRect.anchoredPosition = Vector2.zero;
+            inputRect.anchorMax = new Vector2(0.75f, 1f);
+            inputRect.offsetMin = Vector2.zero;
+            inputRect.offsetMax = new Vector2(-5f, 0f);
 
+            var bgImage = inputGO.GetComponent<Image>();
             bgImage.color = new Color(0f, 0f, 0f, 0.4f);
             bgImage.raycastTarget = false;
 
-            GameObject textAreaGO = CreateUIObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
+            _searchInputField = inputGO.GetComponent<TMP_InputField>();
 
+            GameObject textAreaGO = CreateUIObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
             var textAreaRT = textAreaGO.GetComponent<RectTransform>();
 
             textAreaRT.SetParent(inputRect, false);
             textAreaRT.anchorMin = Vector2.zero;
             textAreaRT.anchorMax = Vector2.one;
-            textAreaRT.offsetMin = Vector2.zero;
-            textAreaRT.offsetMax = Vector2.zero;
+            textAreaRT.sizeDelta = Vector2.zero;
 
             GameObject textGO = CreateUIObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
 
             var textTMP = textGO.GetComponent<TextMeshProUGUI>();
-            var textRT = textGO.GetComponent<RectTransform>();
+            textTMP.fontSize = 20f;
+            textTMP.alignment = TextAlignmentOptions.Center;
+            textTMP.color = Color.white;
 
+            var textRT = textGO.GetComponent<RectTransform>();
             textRT.SetParent(textAreaRT, false);
             textRT.anchorMin = Vector2.zero;
             textRT.anchorMax = Vector2.one;
             textRT.sizeDelta = Vector2.zero;
-
-            textTMP.fontSize = 20f;
-            textTMP.alignment = TextAlignmentOptions.Center;
-            textTMP.color = Color.white;
 
             GameObject phGO = CreateUIObject("Placeholder", typeof(RectTransform), typeof(TextMeshProUGUI));
 
@@ -693,9 +692,46 @@ namespace CookBook
             _searchInputField.textViewport = textAreaRT;
             _searchInputField.textComponent = textTMP;
             _searchInputField.placeholder = placeholderTMP;
-            _searchInputField.onValueChanged.AddListener(OnSearchTextChanged);
+            _searchInputField.onValueChanged.AddListener(_ => RefreshUIVisibility());
 
-            AddBorderTapered(inputRect, new Color32(209, 209, 210, 200), bottom: Mathf.Max(1f, SearchBarBottomBorderThicknessNorm * _panelHeight));
+            GameObject cycleBtnGO = CreateUIObject("CategoryCycleButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            var cycleRT = cycleBtnGO.GetComponent<RectTransform>();
+            cycleRT.SetParent(searchRect, false);
+            cycleRT.anchorMin = new Vector2(0.8f, 0f); // Occupy the right 20%
+            cycleRT.anchorMax = new Vector2(1f, 1f);    // Match full height of container
+            cycleRT.offsetMin = new Vector2(0f, 0f);    // Flush with right edge
+            cycleRT.offsetMax = Vector2.zero;
+
+            var cycleImg = cycleBtnGO.GetComponent<Image>();
+            cycleImg.color = new Color(0f, 0f, 0f, 0.4f);
+            cycleImg.raycastTarget = true;
+
+            var Btn = cycleBtnGO.GetComponent<Button>();
+            Btn.transition = Selectable.Transition.None;
+            Btn.targetGraphic = cycleImg;
+            Btn.interactable = true;
+
+            // Label inside the button
+            GameObject labelGO = CreateUIObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+            var labelTMP = labelGO.GetComponent<TextMeshProUGUI>();
+            labelTMP.fontSize = 14f;
+            labelTMP.alignment = TextAlignmentOptions.Center;
+            labelTMP.raycastTarget = false;
+
+            labelGO.transform.SetParent(cycleRT, false);
+            var labelRT = (RectTransform)labelGO.transform;
+            labelRT.anchorMin = Vector2.zero;
+            labelRT.anchorMax = Vector2.one;
+            labelRT.sizeDelta = Vector2.zero;
+
+            UpdateCycleButtonVisuals(labelTMP);
+
+            Btn.onClick.AddListener(() =>
+            {
+                RecipeFilter.CycleCategory();
+                UpdateCycleButtonVisuals(labelTMP);
+                RefreshUIVisibility();
+            });
 
             // TODO: update general shape to match ROR2 style
             // ------------------------ Global Craft Button) ------------------------
@@ -1277,6 +1313,7 @@ namespace CookBook
             drawerRT.offsetMax = Vector2.zero;
 
             img.color = Color.clear;
+            img.raycastTarget = false;
 
             var scroll = drawerGO.GetComponent<NestedScrollRect>();
             scroll.horizontal = false;
@@ -1563,6 +1600,22 @@ namespace CookBook
         }
 
         //==================== Helpers ====================
+        private static void UpdateCycleButtonVisuals(TextMeshProUGUI label)
+        {
+            if (label == null) return;
+
+            label.text = RecipeFilter.GetLabel();
+
+            // Apply vanilla-themed colors based on category
+            label.color = RecipeFilter.CurrentCategory switch
+            {
+                RecipeFilterCategory.Damage => new Color(1f, 0.3f, 0.3f), // Soft Red
+                RecipeFilterCategory.Healing => new Color(0.3f, 1f, 0.3f), // Soft Green
+                RecipeFilterCategory.Utility => new Color(0.3f, 0.6f, 1f), // Soft Blue
+                _ => Color.white
+            };
+        }
+
         private static GameObject CreateUIObject(string name, params System.Type[] components)
         {
             var go = new GameObject(name, components);
@@ -1803,9 +1856,9 @@ namespace CookBook
 
         private static void CraftablesForUIChanged(IReadOnlyList<CraftableEntry> craftables)
         {
-            _lastCraftables = craftables;
+            LastCraftables = craftables;
             if (!_skeletonBuilt) return;
-            PopulateRecipeList(_lastCraftables);
+            PopulateRecipeList(LastCraftables);
         }
 
         private static void ToggleRecipeRow(RecipeRowRuntime runtime)
@@ -1883,23 +1936,24 @@ namespace CookBook
             if (runtime.ArrowText != null) runtime.ArrowText.text = ">";
         }
 
-        private static void OnSearchTextChanged(string text)
+        private static void OnFilterDropdownChanged(int index)
         {
-            if (_recipeRowUIs == null) return;
-            if (text == null) text = string.Empty;
+            RecipeFilter.CurrentCategory = (RecipeFilterCategory)index;
+            RefreshUIVisibility();
+        }
 
-            text = text.Trim().ToLowerInvariant();
+        private static void RefreshUIVisibility()
+        {
+            RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField?.text);
 
-            foreach (var row in _recipeRowUIs)
+            if (_currentController != null)
             {
-
-                if (row.RowGO == null)
+                if (_onIngredientsChangedMethod == null)
                 {
-                    _log.LogDebug($"row {row.RowGO.name} is null");
-                    continue;
+                    _onIngredientsChangedMethod = typeof(CraftingController).GetMethod("OnIngredientsChanged",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 }
-                bool matches = EntryMatchesSearch(row.Entry, text);
-                row.RowGO.SetActive(matches);
+                _onIngredientsChangedMethod?.Invoke(_currentController, null);
             }
         }
 
@@ -2220,21 +2274,10 @@ namespace CookBook
             }
         }
 
-        private static bool EntryMatchesSearch(CraftableEntry entry, string term)
-        {
-            if (string.IsNullOrEmpty(term)) return true;
-            if (entry == null) return false;
-
-            string name = GetEntryDisplayName(entry);
-            if (string.IsNullOrEmpty(name)) return false;
-            return name.ToLowerInvariant().Contains(term);
-        }
-
-        private static string GetEntryDisplayName(CraftableEntry entry)
+        internal static string GetEntryDisplayName(CraftableEntry entry)
         {
             if (entry == null)
             {
-                _log.LogDebug($"entry {entry} is null");
                 return "Unknown Result";
             }
             if (entry.IsItem)
@@ -2279,7 +2322,7 @@ namespace CookBook
             return null;
         }
 
-        private static Color GetEntryColor(CraftableEntry entry)
+        internal static Color GetEntryColor(CraftableEntry entry)
         {
             PickupIndex pickupIndex = PickupIndex.none;
 
@@ -2291,7 +2334,7 @@ namespace CookBook
             return pickupDef != null ? pickupDef.baseColor : Color.white;
         }
 
-        private struct RecipeRowUI
+        internal struct RecipeRowUI
         {
             public CraftableEntry Entry;
             public GameObject RowGO;
@@ -2304,7 +2347,7 @@ namespace CookBook
             return result;
         }
 
-        private static void PixelSnap(RectTransform rt)
+        internal static void PixelSnap(RectTransform rt)
         {
             if (!rt) return;
 

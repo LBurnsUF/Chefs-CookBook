@@ -3,6 +3,12 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.2.6 — 12/29/25
+### Added
+- Added sorting support to craftUI to sort based on item type (visual only to avoid recomputation)
+
+---
+
 ## v1.2.5 — 12/29/25
 ### Fixed
 - Added inter-client confirmation via networked commands so that non-modded users can still participate (it sends the objective in raw text via chat!)

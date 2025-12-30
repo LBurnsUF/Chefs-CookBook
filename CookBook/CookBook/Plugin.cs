@@ -16,10 +16,10 @@ namespace CookBook
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "rainorshine";
         public const string PluginName = "CookBook";
-        public const string PluginVersion = "1.2.5";
+        public const string PluginVersion = "1.2.6";
 
         internal static ManualLogSource Log;
-        private const int DefaultMaxDepth = 5;
+        private const int DefaultMaxDepth = 3;
 
         public static ConfigEntry<int> MaxDepth;
         public static ConfigEntry<string> TierOrder;
