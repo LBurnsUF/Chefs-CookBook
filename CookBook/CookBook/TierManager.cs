@@ -14,9 +14,7 @@ namespace CookBook
         private static readonly ItemTier[] DefaultOrder;
         private static readonly HashSet<ItemTier> _seenTiers;
         private static Dictionary<ItemTier, int> _orderMap;
-
-        // Events
-        internal static event System.Action OnTierOrderChanged;
+        private const ItemTier EquipmentPseudoTier = (ItemTier)500;
 
         // ---------------------- Initialization  ----------------------------
         static TierManager()
@@ -47,10 +45,77 @@ namespace CookBook
             _log = log;
         }
 
-        // ---------------------- Tier Events ----------------------------
+        // ---------------------- Events ----------------------------
+        internal static event System.Action OnTierOrderChanged;
+
         internal static void OnTierPriorityChanged(object sender, EventArgs e)
         {
             OnTierOrderChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Update the tier order
+        /// </summary>
+        internal static void SetOrder(ItemTier[] newOrder)
+        {
+            _orderMap = BuildMapFrom(newOrder);
+            OnTierOrderChanged?.Invoke();
+        }
+
+        // ---------------------- Sorting Logic ----------------------------
+        /// <summary>
+        /// Compare two CraftableEntry objects.
+        /// Items/Equipment sorted by tier/name;
+        /// </summary>
+        internal static int CompareCraftableEntries(CraftPlanner.CraftableEntry a, CraftPlanner.CraftableEntry b)
+        {
+            bool aIsItem = a.ResultIndex < ItemCatalog.itemCount;
+            ItemTier tierA = aIsItem ? ItemCatalog.GetItemDef((ItemIndex)a.ResultIndex).tier : EquipmentPseudoTier;
+            string nameA = GetDisplayName(a);
+
+            bool bIsItem = b.ResultIndex < ItemCatalog.itemCount;
+            ItemTier tierB = bIsItem ? ItemCatalog.GetItemDef((ItemIndex)b.ResultIndex).tier : EquipmentPseudoTier;
+            string nameB = GetDisplayName(b);
+
+            int rankA = Rank(tierA);
+            int rankB = Rank(tierB);
+            int tierCmp = rankA.CompareTo(rankB);
+
+            if (tierCmp != 0) return tierCmp;
+
+            return string.Compare(nameA, nameB, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Gets the integer rank for a given tier.
+        /// </summary>
+        internal static int Rank(ItemTier tier)
+        {
+            int bucketWeight = 500;
+            if (CookBook.TierPriorities.TryGetValue(tier, out var configEntry))
+            {
+                bucketWeight = (int)configEntry.Value * 100;
+            }
+
+            int tieBreaker = 50;
+            if (_orderMap.TryGetValue(tier, out int csvPosition))
+            {
+                tieBreaker = csvPosition;
+            }
+
+            return bucketWeight + tieBreaker;
+        }
+
+        private static string GetDisplayName(CraftPlanner.CraftableEntry entry)
+        {
+            if (entry.ResultIndex < ItemCatalog.itemCount)
+            {
+                var def = ItemCatalog.GetItemDef((ItemIndex)entry.ResultIndex);
+                return def ? Language.GetString(def.nameToken) : entry.ResultIndex.ToString();
+            }
+            var equipIdx = (EquipmentIndex)(entry.ResultIndex - ItemCatalog.itemCount);
+            var eDef = EquipmentCatalog.GetEquipmentDef(equipIdx);
+            return eDef ? Language.GetString(eDef.nameToken) : equipIdx.ToString();
         }
 
         // ---------------------- Runtime Helpers ----------------------------
@@ -60,30 +125,38 @@ namespace CookBook
         internal static ItemTier[] DiscoverTiersFromCatalog()
         {
             var set = new HashSet<ItemTier>(_seenTiers);
-            int len = ItemCatalog.itemCount;
-            for (int i = 0; i < len; i++)
+            for (int i = 0; i < ItemCatalog.itemCount; i++)
             {
                 var def = ItemCatalog.GetItemDef((ItemIndex)i);
-                if (!def)
-                    continue;
-
-                set.Add(def.tier);
+                if (def) set.Add(def.tier);
             }
 
-            foreach (var t in set)
-            {
-                _seenTiers.Add(t);
-            }
+            set.Add(EquipmentPseudoTier);
 
+            foreach (var t in set) _seenTiers.Add(t);
             return set.ToArray();
         }
 
-        /// <summary>
-        /// Convert an ItemTier[] ordering into the CSV format used by the config.
-        /// </summary>
-        internal static string ToCsv(ItemTier[] order)
+        public static string GetFriendlyName(ItemTier tier)
         {
-            return string.Join(",", order.Select(t => t.ToString()));
+            if (tier == EquipmentPseudoTier) return "Equipment";
+            string internalName = tier.ToString();
+
+            var tierDef = ItemTierCatalog.GetItemTierDef(tier);
+            if (tierDef != null && !string.IsNullOrEmpty(tierDef.name))
+            {
+                internalName = tierDef.name;
+            }
+
+            if (internalName.EndsWith("Def"))
+                internalName = internalName.Substring(0, internalName.Length - 3);
+            if (internalName.EndsWith(" Tier Def"))
+                internalName = internalName.Replace(" Tier Def", "");
+
+            if (FriendlyTierNames.TryGetValue(internalName, out var friendly))
+                return friendly;
+
+            return System.Text.RegularExpressions.Regex.Replace(internalName, "([a-z])([A-Z])", "$1 $2");
         }
 
         /// <summary>
@@ -112,89 +185,53 @@ namespace CookBook
             return list.Count > 0 ? list.ToArray() : DefaultOrder;
         }
 
-        // ---------------------- Sorting Helpers ----------------------------
         /// <summary>
-        /// Compare two CraftableEntry objects.
-        /// Items sorted by tier/name; Equipment sorted by name.
+        /// Convert an ItemTier[] ordering into the CSV format used by the config.
         /// </summary>
-        internal static int CompareCraftableEntries(
-            CraftPlanner.CraftableEntry a,
-            CraftPlanner.CraftableEntry b)
+        internal static string ToCsv(ItemTier[] order)
         {
-            bool aIsItem = a.ResultIndex < ItemCatalog.itemCount;
-            bool bIsItem = b.ResultIndex < ItemCatalog.itemCount;
-
-            // Group by type
-            if (aIsItem != bIsItem)
-            {
-                return aIsItem ? -1 : 1;
-            }
-
-            // Both are items
-            if (aIsItem)
-            {
-                return CompareItems((ItemIndex)a.ResultIndex, (ItemIndex)b.ResultIndex);
-            }
-
-            // Compare Equipment (Alphabetical)
-            int offset = ItemCatalog.itemCount;
-            var equipA = (EquipmentIndex)(a.ResultIndex - offset);
-            var equipB = (EquipmentIndex)(b.ResultIndex - offset);
-
-            var defA = EquipmentCatalog.GetEquipmentDef(equipA);
-            var defB = EquipmentCatalog.GetEquipmentDef(equipB);
-
-            string nameA = defA ? defA.nameToken : equipA.ToString();
-            string nameB = defB ? defB.nameToken : equipB.ToString();
-            return string.Compare(nameA, nameB, StringComparison.Ordinal);
+            return string.Join(",", order.Select(t => t.ToString()));
         }
 
-        /// <summary>
-        /// Compare two ItemIndex values (tier first, then name).
-        /// </summary>
-        internal static int CompareItems(ItemIndex a, ItemIndex b)
+        public static TierPriority GetDefaultPriorityForTier(ItemTier tier)
         {
-            var defA = ItemCatalog.GetItemDef(a);
-            var defB = ItemCatalog.GetItemDef(b);
-
-            var tierA = defA ? defA.tier : ItemTier.NoTier;
-            var tierB = defB ? defB.tier : ItemTier.NoTier;
-
-            int rankA = Rank(tierA);
-            int rankB = Rank(tierB);
-            int tierCmp = rankA.CompareTo(rankB);
-            if (tierCmp != 0)
-            {
-                return tierCmp;
-            }
-
-            string nameA = defA ? defA.nameToken : a.ToString();
-            string nameB = defB ? defB.nameToken : b.ToString();
-            return string.Compare(nameA, nameB, StringComparison.Ordinal);
+            if (tier == ItemTier.Tier3 || tier == ItemTier.VoidTier3) return TierPriority.Highest;
+            if (tier == ItemTier.Boss) return TierPriority.High;
+            if (tier == ItemTier.Tier2 || tier == ItemTier.VoidTier2) return TierPriority.Medium;
+            if (tier == ItemTier.Tier1 || tier == ItemTier.VoidTier1) return TierPriority.Low;
+            return TierPriority.Lowest;
         }
 
-        /// <summary>
-        /// Gets the integer rank for a given tier.
-        /// </summary>
-        /// 
-        internal static int Rank(ItemTier tier)
+        private static Dictionary<ItemTier, int> BuildMapFrom(ItemTier[] arr)
         {
-            int bucketWeight = 500;
-            if (CookBook.TierPriorities.TryGetValue(tier, out var configEntry))
-            {
-                bucketWeight = (int)configEntry.Value * 100;
-            }
-
-            int tieBreaker = 50;
-            if (_orderMap.TryGetValue(tier, out int csvPosition))
-            {
-                tieBreaker = csvPosition;
-            }
-
-            return bucketWeight + tieBreaker;
+            var map = new Dictionary<ItemTier, int>(arr.Length);
+            for (int i = 0; i < arr.Length; i++)
+                map[arr[i]] = i;
+            return map;
         }
 
-        // ---------------------- Helpers ----------------------------
+        internal static ItemTier[] GetAllKnownTiers()
+        {
+            return _seenTiers.ToArray();
+        }
+
+        internal static ItemTier[] ParseTierOrder(string csv)
+        {
+            if (string.IsNullOrWhiteSpace(csv))
+                return DefaultOrder;
+
+            var parts = csv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            var list = new List<ItemTier>();
+            foreach (var p in parts)
+            {
+                if (Enum.TryParse<ItemTier>(p.Trim(), out var tier))
+                    list.Add(tier);
+            }
+
+            // Fall back if user nukes config
+            return list.Count > 0 ? list.ToArray() : DefaultOrder;
+        }
+
         private static readonly Dictionary<string, string> FriendlyTierNames = new()
 {
             { "Tier1", "Common" },
@@ -211,15 +248,6 @@ namespace CookBook
             { "VoidBoss", "Void Boss" }
         };
 
-        public static TierPriority GetDefaultPriorityForTier(ItemTier tier)
-        {
-            if (tier == ItemTier.Tier3 || tier == ItemTier.VoidTier3) return TierPriority.Highest;
-            if (tier == ItemTier.Boss) return TierPriority.High;
-            if (tier == ItemTier.Tier2 || tier == ItemTier.VoidTier2) return TierPriority.Medium;
-            if (tier == ItemTier.Tier1 || tier == ItemTier.VoidTier1) return TierPriority.Low;
-            return TierPriority.Lowest;
-        }
-
         public enum TierPriority
         {
             Highest,
@@ -227,65 +255,6 @@ namespace CookBook
             Medium,
             Low,
             Lowest
-        }
-
-        public static string GetFriendlyName(ItemTier tier)
-        {
-            string internalName = tier.ToString();
-
-            var tierDef = ItemTierCatalog.GetItemTierDef(tier);
-            if (tierDef != null && !string.IsNullOrEmpty(tierDef.name))
-            {
-                internalName = tierDef.name;
-            }
-
-            if (internalName.EndsWith("Def"))
-                internalName = internalName.Substring(0, internalName.Length - 3);
-            if (internalName.EndsWith(" Tier Def"))
-                internalName = internalName.Replace(" Tier Def", "");
-
-            if (FriendlyTierNames.TryGetValue(internalName, out var friendly))
-                return friendly;
-
-            return System.Text.RegularExpressions.Regex.Replace(internalName, "([a-z])([A-Z])", "$1 $2");
-        }
-
-        private static Dictionary<ItemTier, int> BuildMapFrom(ItemTier[] arr)
-        {
-            var map = new Dictionary<ItemTier, int>(arr.Length);
-            for (int i = 0; i < arr.Length; i++)
-                map[arr[i]] = i;
-            return map;
-        }
-
-        /// <summary>
-        /// Update the tier order
-        /// </summary>
-        internal static void SetOrder(ItemTier[] newOrder)
-        {
-            _orderMap = BuildMapFrom(newOrder);
-            OnTierOrderChanged?.Invoke();
-        }
-
-        internal static ItemTier[] GetAllKnownTiers()
-        {
-            return _seenTiers.ToArray();
-        }
-        internal static ItemTier[] ParseTierOrder(string csv)
-        {
-            if (string.IsNullOrWhiteSpace(csv))
-                return DefaultOrder;
-
-            var parts = csv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-            var list = new List<ItemTier>();
-            foreach (var p in parts)
-            {
-                if (Enum.TryParse<ItemTier>(p.Trim(), out var tier))
-                    list.Add(tier);
-            }
-
-            // Fall back if user nukes config
-            return list.Count > 0 ? list.ToArray() : DefaultOrder;
         }
     }
 }

@@ -470,7 +470,7 @@ namespace CookBook
             }
 
             if (IsChainInefficient(chain) || IsChainDominated(chain, results)) return;
-            if (list.Count >= 20) return; // TODO: make this configurable!
+            if (list.Count >= 20) return;
 
             list.Add(chain);
             queue.Enqueue(chain);
