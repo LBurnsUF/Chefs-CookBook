@@ -1,8 +1,6 @@
 ﻿using System;
 using BepInEx.Logging;
 using RoR2;
-using RoR2.UI;
-using UnityEngine;
 using UnityEngine.Networking;
 
 namespace CookBook
@@ -35,27 +33,18 @@ namespace CookBook
         {
             orig(self);
 
-            if (!NetworkClient.active)
-                return;
+            if (!NetworkClient.active) return;
 
             var prompt = self.GetComponent<NetworkUIPromptController>();
-            if (!prompt)
-            {
-                _log.LogDebug("[CookBook] CraftingController has no NetworkUIPromptController, skipping.");
-                return;
-            }
+            if (!prompt) return;
 
-            // Subscribe to UI open/close for this controller instance
             prompt.onDisplayBegin += OnPromptDisplayBegin;
             prompt.onDisplayEnd += OnPromptDisplayEnd;
 
             _log.LogDebug("[CookBook] Hooked NetworkUIPromptController for CraftingController.");
         }
-        
-        internal static void Shutdown()
-        {
-            On.RoR2.CraftingController.Awake -= CraftingController_Awake;
-        }
+
+        internal static void Shutdown() { On.RoR2.CraftingController.Awake -= CraftingController_Awake; }
 
         // ------------------------ Events ------------------------
         private static void OnPromptDisplayBegin(

@@ -32,7 +32,11 @@ namespace CookBook
 
         public static void Abort()
         {
-            if (_craftingRoutine != null) _runner.StopCoroutine(_craftingRoutine);
+            if (_runner != null && _craftingRoutine != null)
+            {
+                _runner.StopCoroutine(_craftingRoutine);
+            }
+
             _craftingRoutine = null;
 
             if (_currentObjective != null)
@@ -43,8 +47,6 @@ namespace CookBook
 
             if (StateController.ActiveCraftingController)
                 CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
-
-            _log.LogInfo("[ExecutionHandler] Local craft aborted.");
         }
 
         private static IEnumerator CraftChainRoutine(CraftPlanner.RecipeChain chain, int repeatCount)

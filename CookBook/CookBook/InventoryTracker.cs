@@ -3,6 +3,7 @@ using RoR2;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 namespace CookBook
 {
     /// <summary>
@@ -14,6 +15,8 @@ namespace CookBook
         private static ManualLogSource _log;
         private static bool _initialized;
         private static bool _enabled;
+        private static bool _isDroneScrapperPresent = false;
+
         private static Inventory _localInventory;
         private static InventorySnapshot _snapshot;
 
@@ -26,8 +29,9 @@ namespace CookBook
         private static readonly HashSet<int> _changedIndices = new();
         private static HashSet<ItemIndex> _lastCorruptedIndices = new();
 
-        internal static void MarkDronesDirty() => _dronesDirty = true;
-        internal static void MarkItemsDirty() => _itemsDirty = true;
+        internal static void DronesDirty() => _dronesDirty = true;
+        internal static void ItemsDirty() => _itemsDirty = true;
+        internal static bool DroneScrapperPresent() => _isDroneScrapperPresent;
 
         public static int LastItemCountUsed { get; private set; }
 
@@ -59,18 +63,12 @@ namespace CookBook
             foreach (ItemTier tier in Enum.GetValues(typeof(ItemTier)))
             {
                 if (tier == ItemTier.AssignedAtRuntime || tier == ItemTier.NoTier) continue;
-
                 PickupIndex scrapPickup = PickupCatalog.FindScrapIndexForItemTier(tier);
 
                 if (scrapPickup != PickupIndex.none)
                 {
                     ItemIndex itemIndex = PickupCatalog.GetPickupDef(scrapPickup)?.itemIndex ?? ItemIndex.None;
-
-                    if (itemIndex != ItemIndex.None)
-                    {
-                        _tierToScrapItemIdx[tier] = itemIndex;
-                        _log.LogDebug($"Mapped Tier {tier} -> Scrap Item: {itemIndex}");
-                    }
+                    if (itemIndex != ItemIndex.None) _tierToScrapItemIdx[tier] = itemIndex;
                 }
             }
         }
@@ -105,7 +103,6 @@ namespace CookBook
             MinionOwnership.onMinionGroupChangedGlobal += OnMinionGroupChanged;
             Inventory.onInventoryChangedGlobal -= OnGlobalInventoryChanged;
 
-            // clear stale user
             if (_localInventory != null) _localInventory.onInventoryChanged -= OnLocalInventoryChanged;
             _localInventory = null;
             _snapshot = default;
@@ -179,12 +176,13 @@ namespace CookBook
         private static void UpdateSnapshot()
         {
             if (!_enabled || _localInventory == null) return;
+            _isDroneScrapperPresent = CheckForScrapper();
 
+            // This logic is to hide recipes that that involve the uncorrupted version of an item that the user has a corrupted version of
             HashSet<ItemIndex> currentCorrupted = new HashSet<ItemIndex>();
             foreach (var info in RoR2.Items.ContagiousItemManager.transformationInfos)
             {
-                if (_localInventory.GetItemCountPermanent(info.transformedItem) > 0)
-                    currentCorrupted.Add(info.originalItem);
+                if (_localInventory.GetItemCountPermanent(info.transformedItem) > 0) currentCorrupted.Add(info.originalItem);
             }
 
             if (!currentCorrupted.SetEquals(_lastCorruptedIndices))
@@ -240,10 +238,7 @@ namespace CookBook
 
             _remoteDirty = false;
 
-            if (_changedIndices.Count == 0 && _hasSnapshot && !_dronesDirty && !_remoteDirty)
-            {
-                return;
-            }
+            if (_changedIndices.Count == 0 && _hasSnapshot && !_dronesDirty && !_remoteDirty) return;
 
             int[] combinedTotal = new int[totalLen];
             for (int i = 0; i < totalLen; i++) combinedTotal[i] = _cachedLocalPhysical[i];
@@ -264,8 +259,7 @@ namespace CookBook
         {
             if (!user || !user.master) return;
 
-            var minions = CharacterBody.readOnlyInstancesList
-                .Where(b => b.master && b.master.minionOwnership.ownerMaster == user.master);
+            var minions = CharacterBody.readOnlyInstancesList.Where(b => b.master && b.master.minionOwnership.ownerMaster == user.master);
 
             foreach (var minionBody in minions)
             {
@@ -279,9 +273,7 @@ namespace CookBook
                     int scrapIdx = MapTierToScrapIndex(droneDef.tier);
                     if (scrapIdx != -1)
                     {
-                        int upgradeCount = minionBody.inventory
-                            ? minionBody.inventory.GetItemCountEffective(DLC3Content.Items.DroneUpgradeHidden)
-                            : 0;
+                        int upgradeCount = minionBody.inventory ? minionBody.inventory.GetItemCountEffective(DLC3Content.Items.DroneUpgradeHidden) : 0;
 
                         globalPotentialBuffer[scrapIdx] += DroneUpgradeUtils.GetDroneCountFromUpgradeCount(upgradeCount);
 
@@ -301,15 +293,11 @@ namespace CookBook
 
         private static bool HasPermanentChanges(Inventory inv, int[] currentUnifiedStacks)
         {
-            if (inv == null || _cachedLocalPhysical == null) return true;
-            if (inv != _localInventory) return true;
+            if (inv == null || _cachedLocalPhysical == null || inv != _localInventory) return true;
 
             for (int i = 0; i < currentUnifiedStacks.Length; i++)
             {
-                if (currentUnifiedStacks[i] != _cachedLocalPhysical[i])
-                {
-                    return true;
-                }
+                if (currentUnifiedStacks[i] != _cachedLocalPhysical[i]) return true;
             }
 
             return false;
@@ -370,13 +358,21 @@ namespace CookBook
         }
 
         //--------------------------------- Helpers ------------------------------------------
+        private static bool CheckForScrapper()
+        {
+            if (UnityEngine.Object.FindObjectOfType<DroneScrapperController>() != null) return true;
+            foreach (var go in UnityEngine.Object.FindObjectsOfType<GameObject>())
+            {
+                if (go.name.Contains("DroneScrapper")) return true;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Exposes the corrupted indices from the current snapshot for transient recipe filtering.
         /// </summary>
-        internal static HashSet<ItemIndex> GetCorruptedIndices()
-        {
-            return _snapshot.CorruptedIndices ?? new HashSet<ItemIndex>();
-        }
+        internal static HashSet<ItemIndex> GetCorruptedIndices() { return _snapshot.CorruptedIndices ?? new HashSet<ItemIndex>(); }
 
         private static int[] GetUnifiedStacksFor(Inventory inv)
         {
@@ -403,9 +399,6 @@ namespace CookBook
             return stacks;
         }
 
-        internal static int GetGlobalDronePotentialCount(int index) =>
-            (_snapshot.DronePotential != null && index < _snapshot.DronePotential.Length) ? _snapshot.DronePotential[index] : 0;
-
         private static int MapTierToScrapIndex(ItemTier tier)
         {
             if (_tierToScrapItemIdx.TryGetValue(tier, out var index)) return (int)index;
@@ -417,26 +410,23 @@ namespace CookBook
         /// </summary>
         internal static DroneCandidate GetScrapCandidate(int scrapIdx)
         {
-            if (_snapshot.CheapestDrones != null && _snapshot.CheapestDrones.TryGetValue(scrapIdx, out var candidate))
-                return candidate;
+            if (_snapshot.CheapestDrones != null && _snapshot.CheapestDrones.TryGetValue(scrapIdx, out var candidate)) return candidate;
             return default;
         }
 
+        internal static int GetGlobalDronePotentialCount(int index) => (_snapshot.DronePotential != null && index < _snapshot.DronePotential.Length) ? _snapshot.DronePotential[index] : 0;
         internal static int GetPhysicalCount(int index) => (_snapshot.PhysicalStacks != null && index < _snapshot.PhysicalStacks.Length) ? _snapshot.PhysicalStacks[index] : 0;
         internal static int GetDronePotentialCount(int index) => (_snapshot.DronePotential != null && index < _snapshot.DronePotential.Length) ? _snapshot.DronePotential[index] : 0;
         internal static int[] GetDronePotentialStacks() => (_snapshot.DronePotential != null) ? (int[])_snapshot.DronePotential.Clone() : Array.Empty<int>();
-
         /// <summary>
         /// Returns the aggregate stack (Local Items + Drones + Pooled Allied Items).
         /// </summary>
         internal static int[] GetUnifiedStacksCopy() => (_snapshot.TotalStacks != null) ? (int[])_snapshot.TotalStacks.Clone() : Array.Empty<int>();
-
         /// <summary>
         /// Returns only what the local player physically owns (Items + Equipment).
         /// Used to determine if a TradeStep is actually required.
         /// </summary>
         internal static int[] GetLocalPhysicalStacks() => (_snapshot.PhysicalStacks != null) ? (int[])_snapshot.PhysicalStacks.Clone() : Array.Empty<int>();
-
         /// <summary>
         /// Provides the planner with specific snapshots of allied inventories.
         /// </summary>

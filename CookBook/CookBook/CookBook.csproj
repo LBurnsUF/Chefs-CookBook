@@ -19,6 +19,8 @@
 		<Compile Include="Plugin.cs" />
 		<Compile Include="RecipeFilter.cs" />
 		<Compile Include="RecipeProvider.cs" />
+		<Compile Include="RecipeTrackerUI.cs" />
+		<Compile Include="RegisterAssets.cs" />
 		<Compile Include="SettingsUI.cs" />
 		<Compile Include="StateController.cs" />
 		<Compile Include="TierManager.cs" />
@@ -60,6 +62,14 @@
 		</Reference>
 		<Reference Include="RiskOfOptions">
 			<HintPath>C:\Users\logan\AppData\Roaming\r2modmanPlus-local\RiskOfRain2\profiles\Default\BepInEx\plugins\Rune580-Risk_Of_Options\RiskOfOptions\RiskOfOptions.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="Unity.Addressables">
+			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\Unity.Addressables.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="Unity.ResourceManager">
+			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\Unity.ResourceManager.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 	</ItemGroup>

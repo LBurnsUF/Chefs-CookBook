@@ -85,10 +85,14 @@ namespace CookBook
         /// </summary>
         internal static void OnStageStart(Stage stage)
         {
-            var sceneDef = stage ? stage.sceneDef : null;
-            if (IsChefStage(sceneDef)) OnChefStageEntered?.Invoke();
-            else if (IsChefStage(_laststage)) OnChefStageExited?.Invoke();
-            _laststage = sceneDef;
+            if (CheckForChefPresence())
+            {
+                OnChefStageEntered?.Invoke();
+            }
+            else
+            {
+                OnChefStageExited?.Invoke();
+            }
         }
 
         /// <summary>
@@ -200,16 +204,20 @@ namespace CookBook
 
         private static void DisableChef()
         {
-            _log.LogInfo("Disabling InventoryTracker and inventory events.");
+            if (!_subscribedInventoryHandler) return;
 
-            if (_subscribedInventoryHandler)
-            {
-                InventoryTracker.OnInventoryChangedWithIndices -= OnInventoryChanged;
-                _subscribedInventoryHandler = false;
-            }
+            InventoryTracker.OnInventoryChangedWithIndices -= OnInventoryChanged;
+            _subscribedInventoryHandler = false;
+
             CraftingExecutionHandler.Abort();
             CraftingObjectiveTracker.Cleanup();
             InventoryTracker.Disable();
+
+            _planner = null;
+            _lastCraftables.Clear();
+            _lastCraftables.TrimExcess();
+
+            CraftUI.Detach();
         }
 
         internal static void OnChefUiOpened(CraftingController controller)
@@ -279,6 +287,21 @@ namespace CookBook
         }
 
         //--------------------------------------- Helpers ----------------------------------------
+        internal static bool CheckForChefPresence()
+        {
+            if (UnityEngine.Object.FindObjectOfType<CraftingController>() != null)
+                return true;
+
+            foreach (var go in UnityEngine.Object.FindObjectsOfType<GameObject>())
+            {
+                if (go.name.Contains("CraftingController") || go.name.Contains("ChefStation"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
         internal static void ForceRebuild()
         {
             if (_planner != null && IsChefStage()) _planner.ComputeCraftable(InventoryTracker.GetUnifiedStacksCopy(), null, false);
@@ -319,7 +342,7 @@ namespace CookBook
             {
                 RecipeProvider.Rebuild();
 
-                _planner = new CraftPlanner(RecipeProvider.Recipes, CookBook.MaxDepth.Value, _log);
+                SetPlanner(new CraftPlanner(RecipeProvider.Recipes, CookBook.MaxDepth.Value, _log));
             }
 
             _planner.ComputeCraftable(unifiedStacks, changedIndices, false);

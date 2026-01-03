@@ -3,6 +3,20 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.2.9 — 1/2/26
+### Fixed
+ - Hardened Stage transition logic as it was throwing exceptions due to abort trying to fire on a null craftingcontroller (oops)
+### Added
+ - Added cool little indicators for the category selection button (yippee!)
+
+---
+
+## v1.2.8 — 1/1/26
+### Changed
+ - Stage entry logic now checks for an existing craftingcontroller (ie a chef) rather than relying on stage transitions
+
+---
+
 ## v1.2.7 — 1/1/26 🎉
 ### Changed (many optimizations)
 - Now uses a commutative hash to cheaply cull permutations EARLY

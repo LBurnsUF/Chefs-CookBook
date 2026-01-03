@@ -14,14 +14,14 @@ namespace CookBook
         {
             public string RawText;
             public uint SenderNetID;
-            public int TrackedItemIdx; // Track exactly which item this request is for
+            public int TrackedItemIdx;
             private GameObject _inputWatcher;
 
             public void Init(string text, uint senderID = 0, int itemIdx = -1)
             {
                 RawText = text;
                 SenderNetID = senderID;
-                TrackedItemIdx = itemIdx; // Store the index for surgical clearing
+                TrackedItemIdx = itemIdx;
 
                 _inputWatcher = new GameObject("CookBook_ObjectiveWatcher");
                 var watcher = _inputWatcher.AddComponent<CancelWatcher>();
@@ -33,7 +33,7 @@ namespace CookBook
             public void Complete()
             {
                 if (_inputWatcher) Destroy(_inputWatcher);
-                CraftingObjectiveTracker.RemoveToken(this);
+                RemoveToken(this);
                 Destroy(this);
             }
 
@@ -112,7 +112,7 @@ namespace CookBook
 
             if (command == "TRADE")
             {
-                message = $"<style=cIsUtility>{senderName} needs:</style> {quantity}x {itemName}";
+                message = $"<style=cIsUtility>{senderName} needs:</style> {quantity}x {itemName} <style=cStack>(Trade an Item)</style>";
             }
             else if (command == "SCRAP")
             {
@@ -125,10 +125,7 @@ namespace CookBook
             }
         }
 
-        private static void RemoveToken(ObjectiveToken token)
-        {
-            if (_activeObjectives.Contains(token)) _activeObjectives.Remove(token);
-        }
+        private static void RemoveToken(ObjectiveToken token) { if (_activeObjectives.Contains(token)) _activeObjectives.Remove(token); }
 
         private static void OnCollectObjectiveSources(CharacterMaster viewerMaster, List<ObjectivePanelController.ObjectiveSourceDescriptor> output)
         {
@@ -154,10 +151,7 @@ namespace CookBook
 
         internal static void ClearAllObjectives()
         {
-            for (int i = _activeObjectives.Count - 1; i >= 0; i--)
-            {
-                if (_activeObjectives[i]) _activeObjectives[i].Complete();
-            }
+            for (int i = _activeObjectives.Count - 1; i >= 0; i--) if (_activeObjectives[i]) _activeObjectives[i].Complete();
             _activeObjectives.Clear();
         }
 

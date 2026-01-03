@@ -1,5 +1,4 @@
-﻿using BepInEx;
-using BepInEx.Logging;
+﻿using BepInEx.Logging;
 using RoR2;
 using System;
 using System.Collections.Generic;
@@ -62,10 +61,7 @@ namespace CookBook
                     int idx = ing.UnifiedIndex;
                     _allIngredientIndices.Add(idx);
 
-                    if (ing.Count > _maxDemand[idx])
-                    {
-                        _maxDemand[idx] = ing.Count;
-                    }
+                    if (ing.Count > _maxDemand[idx]) _maxDemand[idx] = ing.Count;
                 }
             }
         }
@@ -104,11 +100,7 @@ namespace CookBook
 
             var transientRecipes = RecipeProvider.GetFilteredRecipes(InventoryTracker.GetCorruptedIndices());
             _transientIngredients.Clear();
-            foreach (var r in transientRecipes)
-            {
-                foreach (var ing in r.Ingredients)
-                    _transientIngredients.Add(ing.UnifiedIndex);
-            }
+            foreach (var r in transientRecipes) foreach (var ing in r.Ingredients) _transientIngredients.Add(ing.UnifiedIndex);
 
             var discovered = new Dictionary<int, List<RecipeChain>>();
             var seenSignatures = new HashSet<long>();
@@ -127,10 +119,7 @@ namespace CookBook
                 }
             }
 
-            if (CookBook.AllowMultiplayerPooling.Value)
-            {
-                InjectTradeRecipes(null, discovered, queue, seenSignatures, _transientIngredients);
-            }
+            if (CookBook.AllowMultiplayerPooling.Value) InjectTradeRecipes(null, discovered, queue, seenSignatures, _transientIngredients);
 
             for (int d = 2; d <= _maxDepth; d++)
             {
@@ -191,10 +180,7 @@ namespace CookBook
 
         private bool IsCausallyLinked(RecipeChain chain, ChefRecipe next)
         {
-            foreach (var ing in next.Ingredients)
-            {
-                if (GetNetSurplus(chain, ing.UnifiedIndex) > 0) return true;
-            }
+            foreach (var ing in next.Ingredients) if (GetNetSurplus(chain, ing.UnifiedIndex) > 0) return true;
 
             int candidateResultIndex = next.ResultIndex;
             int globalMaxDemand = _maxDemand[candidateResultIndex];
@@ -226,9 +212,9 @@ namespace CookBook
             {
                 int existingWeight = GetWeightedCost(existing);
 
-                if (existing.Depth < newChain.Depth && existingWeight <= newWeight)
+                if (existing.Depth < newChain.Depth && existingWeight <= newWeight && HasSuperiorSurplusProfile(existing, newChain))
                 {
-                    if (HasSuperiorSurplusProfile(existing, newChain)) return true;
+                    return true;
                 }
             }
             return false;
@@ -255,7 +241,9 @@ namespace CookBook
                 if (netDeficit <= 0) continue;
 
                 int physical = totalStacks[idx];
-                int potential = InventoryTracker.GetGlobalDronePotentialCount(idx);
+                int potential = InventoryTracker.DroneScrapperPresent()
+                    ? InventoryTracker.GetGlobalDronePotentialCount(idx)
+                    : 0;
 
                 if (physical + potential < netDeficit) return false;
             }
@@ -273,10 +261,7 @@ namespace CookBook
             {
                 int tradesLeft = TradeTracker.GetRemainingTrades(ally.Key);
 
-                if (chain != null)
-                {
-                    tradesLeft -= chain.Steps.OfType<TradeRecipe>().Count(t => t.Donor == ally.Key);
-                }
+                if (chain != null) tradesLeft -= chain.Steps.OfType<TradeRecipe>().Count(t => t.Donor == ally.Key);
 
                 if (tradesLeft <= 0) continue;
 
@@ -358,12 +343,13 @@ namespace CookBook
                 int payWithPhysical = Math.Min(physOwned, net);
                 int deficit = net - payWithPhysical;
 
-                int globalDronePotential = InventoryTracker.GetGlobalDronePotentialCount(idx);
+                int globalDronePotential = InventoryTracker.DroneScrapperPresent()
+                    ? InventoryTracker.GetGlobalDronePotentialCount(idx)
+                    : 0;
+
                 if (deficit > 0)
                 {
-                    int totalPotential = InventoryTracker.GetGlobalDronePotentialCount(idx);
-                    if (deficit > totalPotential) return (null, null, null);
-
+                    if (deficit > globalDronePotential) return (null, null, null);
                     _tempDroneList.Add(new Ingredient(idx, deficit));
                 }
 
@@ -579,10 +565,7 @@ namespace CookBook
                 return sig;
             }
 
-            internal static long CalculateRollingSignature(long currentSignature, ChefRecipe next)
-            {
-                return currentSignature ^ (long)next.GetHashCode();
-            }
+            internal static long CalculateRollingSignature(long currentSignature, ChefRecipe next) { return currentSignature ^ (long)next.GetHashCode(); }
         }
     }
 }

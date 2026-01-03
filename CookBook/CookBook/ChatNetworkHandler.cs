@@ -3,6 +3,7 @@ using RoR2;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
 
 namespace CookBook
 {
@@ -38,11 +39,7 @@ namespace CookBook
 
         private static void OnUserChatMessageProcessed(On.RoR2.Chat.UserChatMessage.orig_OnProcessed orig, Chat.UserChatMessage self)
         {
-            if (self.text != null && self.text.Contains(NetPrefix))
-            {
-                return;
-            }
-
+            if (self.text != null && self.text.Contains(NetPrefix)) return;
             orig(self);
         }
 
@@ -94,6 +91,7 @@ namespace CookBook
                     itemName = Language.currentLanguage.GetLocalizedStringByToken(itemDef.nameToken);
 
                     ItemTierDef tierDef = ItemTierCatalog.GetItemTierDef(itemDef.tier);
+                    Color32 tiercolor = ColorCatalog.GetColor(tierDef.colorIndex);
                     if (tierDef != null)
                     {
                         colorTag = ColorCatalog.GetColorHexString(tierDef.colorIndex);
@@ -198,10 +196,7 @@ namespace CookBook
 
                 if (targetID == 0 || localUser.netId.Value == targetID)
                 {
-                    if (cmd != "ACK")
-                    {
-                        SendAck(senderID, cmd);
-                    }
+                    if (cmd != "ACK") SendAck(senderID, cmd);
 
                     if (cmd == "ABORT")
                     {
@@ -212,10 +207,7 @@ namespace CookBook
 
                     if (cmd == "SUCCESS")
                     {
-                        if (int.TryParse(parts[3], out int itemIdx))
-                        {
-                            CraftingObjectiveTracker.ClearSpecificRequest(senderID, itemIdx);
-                        }
+                        if (int.TryParse(parts[3], out int itemIdx)) CraftingObjectiveTracker.ClearSpecificRequest(senderID, itemIdx);
                         return;
                     }
 

@@ -94,8 +94,7 @@ namespace CookBook
         internal const float textSizeNorm = 0.0383386581f;
 
         // ----- PathsContainer sizing -----
-        private const float PathsContainerLeftPaddingNorm = 0.0181818182f;
-        private const float PathsContainerRightPaddingNorm = 0.0181818182f;
+        private const float PathsContainerPaddingNorm = 0.0181818182f;
         private const int PathsContainerMaxVisibleRows = 4;
         private const float PathsContainerSpacingNorm = 0.00798722045f;
 
@@ -324,7 +323,7 @@ namespace CookBook
 
         internal sealed class RecipeRowRuntime : MonoBehaviour
         {
-            public CraftPlanner.CraftableEntry Entry;
+            public CraftableEntry Entry;
 
             public RectTransform RowTransform;
             public LayoutElement RowLayoutElement;
@@ -346,10 +345,7 @@ namespace CookBook
 
             private void OnDestroy()
             {
-                if (RowTopButton != null)
-                {
-                    RowTopButton.onClick.RemoveAllListeners();
-                }
+                if (RowTopButton != null) RowTopButton.onClick.RemoveAllListeners();
                 Entry = null;
                 _openRow = null;
             }
@@ -378,22 +374,10 @@ namespace CookBook
 
             private void Awake()
             {
-                if (pathButton == null)
-                {
-                    pathButton = GetComponent<Button>();
-                }
-                if (buttonEvent == null)
-                {
-                    buttonEvent = GetComponent<EventTrigger>();
-                }
-                if (pathButton != null)
-                {
-                    pathButton.onClick.AddListener(OnClicked);
-                }
-                if (parentScroll == null)
-                {
-                    parentScroll = GetComponentInParent<ScrollRect>();
-                }
+                if (pathButton == null) pathButton = GetComponent<Button>();
+                if (buttonEvent == null) buttonEvent = GetComponent<EventTrigger>();
+                if (pathButton != null) pathButton.onClick.AddListener(OnClicked);
+                if (parentScroll == null) parentScroll = GetComponentInParent<ScrollRect>();
 
                 EventTrigger.Entry entryEnter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
                 entryEnter.callback.AddListener((data) => OnHighlightChanged(true));
@@ -430,15 +414,8 @@ namespace CookBook
 
             private void OnDestroy()
             {
-                if (pathButton != null)
-                {
-                    pathButton.onClick.RemoveListener(OnClicked);
-                }
-
-                if (buttonEvent != null)
-                {
-                    buttonEvent.triggers.Clear();
-                }
+                if (pathButton != null) pathButton.onClick.RemoveListener(OnClicked);
+                if (buttonEvent != null) buttonEvent.triggers.Clear();
 
                 if (_currentHoveredPath == this) _currentHoveredPath = null;
                 if (_selectedPathUI == this) _selectedPathUI = null;
@@ -446,10 +423,7 @@ namespace CookBook
                 Chain = null;
             }
 
-            private void OnClicked()
-            {
-                CraftUI.OnPathSelected(this);
-            }
+            private void OnClicked() { CraftUI.OnPathSelected(this); }
 
             private void OnHighlightChanged(bool isHighlighted)
             {
@@ -466,13 +440,7 @@ namespace CookBook
                 }
                 UpdateVisuals(false);
             }
-            private void BubbleScroll(BaseEventData data)
-            {
-                if (parentScroll != null && data is PointerEventData pointerData)
-                {
-                    parentScroll.OnScroll(pointerData);
-                }
-            }
+            private void BubbleScroll(BaseEventData data) { if (parentScroll != null && data is PointerEventData pointerData) parentScroll.OnScroll(pointerData); }
 
             public void SetSelected(bool selected)
             {
@@ -573,11 +541,7 @@ namespace CookBook
                 CurrentOwner = null;
             }
 
-            private void OnDestroy()
-            {
-                CurrentOwner = null;
-            }
-
+            private void OnDestroy() { CurrentOwner = null; }
         }
 
         //==================== Cookbook Builders ====================
@@ -585,11 +549,8 @@ namespace CookBook
         {
             if (!cookbookRoot) return;
 
-            // Clear any leftovers if you re-enter the UI
-            for (int i = cookbookRoot.childCount - 1; i >= 0; i--)
-            {
-                UnityEngine.Object.Destroy(cookbookRoot.GetChild(i).gameObject);
-            }
+            // Clear any leftovers if you re-enter the UI 
+            for (int i = cookbookRoot.childCount - 1; i >= 0; i--) UnityEngine.Object.Destroy(cookbookRoot.GetChild(i).gameObject);
 
             //------------------------ Border ------------------------
             AddBorderTapered((RectTransform)_cookbookRoot.transform, new Color32(209, 209, 210, 255), 2f, 2f);
@@ -672,7 +633,7 @@ namespace CookBook
             phRT.anchorMax = Vector2.one;
             phRT.sizeDelta = Vector2.zero;
 
-            placeholderTMP.text = "search";
+            placeholderTMP.text = "Search";
             placeholderTMP.fontSize = 20f;
             placeholderTMP.alignment = TextAlignmentOptions.Center;
             placeholderTMP.color = new Color(1f, 1f, 1f, 0.5f);
@@ -703,7 +664,8 @@ namespace CookBook
             // Label inside the button
             GameObject labelGO = CreateUIObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
             var labelTMP = labelGO.GetComponent<TextMeshProUGUI>();
-            labelTMP.fontSize = 14f;
+            labelTMP.richText = true;
+            labelTMP.fontSize = 20f;
             labelTMP.alignment = TextAlignmentOptions.Center;
             labelTMP.raycastTarget = false;
 
@@ -723,6 +685,7 @@ namespace CookBook
             });
 
             AddBorderTapered(searchRect, new Color32(209, 209, 210, 200), bottom: borderThickness);
+
             // TODO: update general shape to match ROR2 style
             // ------------------------ Footer ------------------------
             GameObject footerGO = CreateUIObject("Footer", typeof(RectTransform));
@@ -1132,10 +1095,9 @@ namespace CookBook
             slotRT.anchoredPosition = new Vector2(slotX, 0f);
 
             // ---------------- Item Label ----------------
-            GameObject labelGO = CreateUIObject("ItemLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
-
+            GameObject labelGO = CreateUIObject("Label", typeof(RectTransform), typeof(RoR2.UI.HGTextMeshProUGUI));
+            var labelTMP = labelGO.GetComponent<RoR2.UI.HGTextMeshProUGUI>();
             var labelRT = labelGO.GetComponent<RectTransform>();
-            var labelTMP = labelGO.GetComponent<TextMeshProUGUI>();
 
             labelRT.SetParent(rowTopRT, false);
 
@@ -1386,7 +1348,7 @@ namespace CookBook
             vlg.spacing = 0f;
 
             int paddingVertical = Mathf.RoundToInt(PathsContainerSpacingNorm * _panelHeight / 2f);
-            int paddingHorizontal = Mathf.RoundToInt(PathsContainerLeftPaddingNorm * _panelWidth);
+            int paddingHorizontal = Mathf.RoundToInt(PathsContainerPaddingNorm * _panelWidth);
             vlg.padding = new RectOffset(paddingHorizontal, paddingHorizontal, paddingVertical, paddingVertical);
 
             contentGO.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -1642,11 +1604,17 @@ namespace CookBook
             return rt;
         }
 
-        private static void UpdateCycleButtonVisuals(TextMeshProUGUI label)
+        public static void UpdateCycleButtonVisuals(TextMeshProUGUI label)
         {
-            if (label == null) return;
+            if (!label) return;
 
-            label.text = RecipeFilter.GetLabel();
+            label.spriteAsset = RecipeFilter.CurrentCategory switch
+            {
+                RecipeFilterCategory.Damage => RegisterAssets.CombatIconAsset,
+                RecipeFilterCategory.Healing => RegisterAssets.HealingIconAsset,
+                RecipeFilterCategory.Utility => RegisterAssets.UtilityIconAsset,
+                _ => null
+            };
 
             label.color = RecipeFilter.CurrentCategory switch
             {
@@ -1655,6 +1623,9 @@ namespace CookBook
                 RecipeFilterCategory.Utility => new Color32(172, 104, 248, 255),
                 _ => Color.white
             };
+
+            label.text = RecipeFilter.GetLabel();
+            label.ForceMeshUpdate();
         }
 
         private static GameObject CreateUIObject(string name, params System.Type[] components)
@@ -1882,13 +1853,9 @@ namespace CookBook
 
                 if (requested > max)
                 {
-                    _repeatInputField.text = max.ToString();
-                    _log.LogInfo($"[UI] Clamped repetition count to max affordable: {max}");
+                    _repeatInputField.text = $"{max.ToString()} (max)";
                 }
-                else if (requested < 1)
-                {
-                    _repeatInputField.text = "1";
-                }
+                else if (requested < 1) _repeatInputField.text = "1";
             }
         }
 
@@ -1914,7 +1881,7 @@ namespace CookBook
             {
                 _globalCraftButton.interactable = true;
                 _globalCraftButtonImage.color = new Color32(206, 198, 143, 200);
-                _globalCraftButtonText.text = "craft";
+                _globalCraftButtonText.text = "Combine";
             }
 
             int max = clickedPath.Chain.GetMaxAffordable(
@@ -1925,10 +1892,7 @@ namespace CookBook
             );
 
             _repeatInputField.text = "1";
-            if (_repeatInputField.placeholder is TextMeshProUGUI ph)
-            {
-                ph.text = $"max {max}";
-            }
+            if (_repeatInputField.placeholder is TextMeshProUGUI ph) ph.text = $"max {max}";
 
         }
 
@@ -2030,12 +1994,6 @@ namespace CookBook
             if (runtime.ArrowText != null) runtime.ArrowText.text = ">";
         }
 
-        private static void OnFilterDropdownChanged(int index)
-        {
-            RecipeFilter.CurrentCategory = (RecipeFilterCategory)index;
-            RefreshUIVisibility();
-        }
-
         private static void RefreshUIVisibility()
         {
             RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField?.text);
@@ -2044,8 +2002,7 @@ namespace CookBook
             {
                 if (_onIngredientsChangedMethod == null)
                 {
-                    _onIngredientsChangedMethod = typeof(CraftingController).GetMethod("OnIngredientsChanged",
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    _onIngredientsChangedMethod = typeof(CraftingController).GetMethod("OnIngredientsChanged", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 }
                 _onIngredientsChangedMethod?.Invoke(_currentController, null);
             }
@@ -2105,7 +2062,6 @@ namespace CookBook
             _selectedAnchor = null;
             _currentHoveredPath = null;
 
-            // Destroy all objects
             foreach (Transform child in _recipeListContent) UnityEngine.Object.Destroy(child.gameObject);
             _recipeRowUIs.Clear();
 
@@ -2210,23 +2166,13 @@ namespace CookBook
 
         internal static void PopulateDropdown(RectTransform contentRoot, RecipeRowRuntime owner)
         {
-            if (_runner == null || !_cookbookRoot.activeInHierarchy)
-            {
-                return;
-            }
+            if (_runner == null || !_cookbookRoot.activeInHierarchy) return;
 
             bool isSameOwner = _cachedDropdownOwner == owner;
             bool hasContent = contentRoot.childCount > 0;
 
-            if (isSameOwner && hasContent)
-            {
-                return;
-            }
-
-            if (_activeDropdownRoutine != null)
-            {
-                _runner.StopCoroutine(_activeDropdownRoutine);
-            }
+            if (isSameOwner && hasContent) return;
+            if (_activeDropdownRoutine != null) _runner.StopCoroutine(_activeDropdownRoutine);
 
             _cachedDropdownOwner = null;
             _activeDropdownRoutine = _runner.StartCoroutine(PopulateDropdownRoutine(contentRoot, owner));
@@ -2363,23 +2309,20 @@ namespace CookBook
             {
                 _globalCraftButton.interactable = false;
                 _globalCraftButtonImage.color = new Color32(26, 22, 22, 100);
-                _globalCraftButtonText.text = "select a recipe";
+                _globalCraftButtonText.text = "Select a Recipe";
                 _globalCraftButtonText.color = new Color32(100, 100, 100, 255);
             }
 
             if (_repeatInputField)
             {
                 _repeatInputField.text = string.Empty;
-                if (_repeatInputField.placeholder is TextMeshProUGUI ph) ph.text = "1";
+                if (_repeatInputField.placeholder is TextMeshProUGUI ph) ph.text = "";
             }
         }
 
         internal static string GetEntryDisplayName(CraftableEntry entry)
         {
-            if (entry == null)
-            {
-                return "Unknown Result";
-            }
+            if (entry == null) return "Unknown Result";
             if (entry.IsItem)
             {
                 var idef = ItemCatalog.GetItemDef(entry.ResultItem);
@@ -2396,8 +2339,7 @@ namespace CookBook
         {
             if (_iconCache.TryGetValue(unifiedIndex, out var sprite)) return sprite;
 
-            if (unifiedIndex < ItemCatalog.itemCount)
-                sprite = ItemCatalog.GetItemDef((ItemIndex)unifiedIndex)?.pickupIconSprite;
+            if (unifiedIndex < ItemCatalog.itemCount) sprite = ItemCatalog.GetItemDef((ItemIndex)unifiedIndex)?.pickupIconSprite;
             else
             {
                 int equipIdx = unifiedIndex - ItemCatalog.itemCount;
@@ -2432,12 +2374,6 @@ namespace CookBook
             if (!pickupIndex.isValid) return Color.white;
             var pickupDef = PickupCatalog.GetPickupDef(pickupIndex);
             return pickupDef != null ? pickupDef.baseColor : Color.white;
-        }
-
-        internal struct RecipeRowUI
-        {
-            public CraftableEntry Entry;
-            public GameObject RowGO;
         }
 
         private static float RoundToEven(float value)
@@ -2476,7 +2412,13 @@ namespace CookBook
                 return Mathf.Round(desiredPixels) * pixelRatio;
             }
 
-            return desiredPixels; // Fallback
+            return desiredPixels;
+        }
+
+        internal struct RecipeRowUI
+        {
+            public CraftableEntry Entry;
+            public GameObject RowGO;
         }
     }
 }

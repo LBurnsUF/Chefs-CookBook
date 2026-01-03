@@ -24,10 +24,7 @@ namespace CookBook
         {
             orig(self);
 
-            if (!StateController.IsChefStage() || CurrentCategory == RecipeFilterCategory.All)
-            {
-                return;
-            }
+            if (!StateController.IsChefStage() || CurrentCategory == RecipeFilterCategory.All) return;
 
             var validIndices = GetValidIngredientsForFilter(CraftUI.LastCraftables);
             if (validIndices == null) return;
@@ -57,13 +54,17 @@ namespace CookBook
             CurrentCategory = (RecipeFilterCategory)next;
         }
 
-        public static string GetLabel() => CurrentCategory switch
+        public static string GetLabel()
         {
-            RecipeFilterCategory.Damage => "DMG",
-            RecipeFilterCategory.Healing => "HEAL",
-            RecipeFilterCategory.Utility => "UTIL",
-            _ => "ALL"
-        };
+            return CurrentCategory switch
+            {
+                RecipeFilterCategory.Damage => "<size=150%><sprite name=\"icon\"></size> DMG",
+                RecipeFilterCategory.Healing => "<size=150%><sprite name=\"icon\"></size> HEAL",
+                RecipeFilterCategory.Utility => "<size=150%><sprite name=\"icon\"></size> UTIL",
+                _ => "ALL"
+            };
+        }
+
 
         public static void ApplyFiltersToUI(List<CraftUI.RecipeRowUI> rows, string searchTerm)
         {

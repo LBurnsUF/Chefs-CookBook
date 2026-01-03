@@ -16,7 +16,7 @@ namespace CookBook
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "rainorshine";
         public const string PluginName = "CookBook";
-        public const string PluginVersion = "1.2.7";
+        public const string PluginVersion = "1.2.9";
 
         internal static ManualLogSource Log;
 
@@ -88,6 +88,13 @@ namespace CookBook
             );
 
             TierManager.Init(Log);
+            RecipeProvider.Init(Log); // Parse all chef recipe rules
+            StateController.Init(Log); // Initialize chef/state logic
+            DialogueHooks.Init(Log); // Initialize all Chef Dialogue Hooks
+            InventoryTracker.Init(Log); // Begin waiting for Enable signal
+            CraftUI.Init(Log); // Initialize craft UI injection
+            ChatNetworkHandler.Init(Log);
+            RegisterAssets.Init();
 
             ItemCatalog.availability.CallWhenAvailable(() =>
             {
@@ -137,14 +144,6 @@ namespace CookBook
             InternalSortOrder.SettingChanged += TierManager.OnTierPriorityChanged;
             TierManager.OnTierOrderChanged += StateController.OnTierOrderChanged;
             RecipeProvider.OnRecipesBuilt += StateController.OnRecipesBuilt;
-
-            RecipeProvider.Init(Log); // Parse all chef recipe rules
-            StateController.Init(Log); // Initialize chef/state logic
-            DialogueHooks.Init(Log); // Initialize all Chef Dialogue Hooks
-            InventoryTracker.Init(Log); // Begin waiting for Enable signal
-            CraftUI.Init(Log); // Initialize craft UI injection
-            ChatNetworkHandler.Init(Log);
-
             DialogueHooks.ChefUiOpened += StateController.OnChefUiOpened;
             DialogueHooks.ChefUiClosed += StateController.OnChefUiClosed;
         }
@@ -154,10 +153,7 @@ namespace CookBook
             // unsubscribe from settings changes
             foreach (var tierEntry in TierPriorities.Values)
             {
-                if (tierEntry != null)
-                {
-                    tierEntry.SettingChanged -= TierManager.OnTierPriorityChanged;
-                }
+                if (tierEntry != null) tierEntry.SettingChanged -= TierManager.OnTierPriorityChanged;
             }
             MaxDepth.SettingChanged -= StateController.OnMaxDepthChanged;
             MaxChainsPerResult.SettingChanged -= StateController.OnMaxChainsPerResultChanged;
