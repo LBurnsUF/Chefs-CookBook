@@ -25,11 +25,9 @@ namespace CookBook
         private static bool _dronesDirty = true;
         private static bool _itemsDirty = true;
         private static bool _remoteDirty = true;
-        private static bool _tradeDirty = true;
         private static bool _hasSnapshot = false;
         private static readonly HashSet<int> _changedIndices = new();
         private static HashSet<ItemIndex> _lastCorruptedIndices = new();
-        private static readonly Dictionary<NetworkUser, int> _lastTradeCounts = new();
 
         internal static void DronesDirty() => _dronesDirty = true;
         internal static void ItemsDirty() => _itemsDirty = true;
@@ -87,7 +85,6 @@ namespace CookBook
             _snapshot = default;
 
             CharacterBody.onBodyStartGlobal += OnBodyStart;
-            CharacterBody.onBodyDestroyGlobal += OnBodyDestroyed;
             MinionOwnership.onMinionGroupChangedGlobal += OnMinionGroupChanged;
             Inventory.onInventoryChangedGlobal += OnGlobalInventoryChanged;
 
@@ -104,7 +101,6 @@ namespace CookBook
 
             CharacterBody.onBodyStartGlobal -= OnBodyStart;
             MinionOwnership.onMinionGroupChangedGlobal += OnMinionGroupChanged;
-            CharacterBody.onBodyDestroyGlobal -= OnBodyDestroyed;
             Inventory.onInventoryChangedGlobal -= OnGlobalInventoryChanged;
 
             if (_localInventory != null) _localInventory.onInventoryChanged -= OnLocalInventoryChanged;
@@ -144,19 +140,6 @@ namespace CookBook
             UpdateSnapshot();
         }
 
-        private static void OnBodyDestroyed(CharacterBody body)
-        {
-            if (!_enabled || body == null) return;
-
-            DroneIndex droneIdx = DroneCatalog.GetDroneIndexFromBodyIndex(body.bodyIndex);
-            if (droneIdx != DroneIndex.None)
-            {
-                _dronesDirty = true;
-                _log.LogDebug("Drone Body destruction detected, updating snapshot.");
-                UpdateSnapshot();
-            }
-        }
-
         private static void OnMinionGroupChanged(MinionOwnership minion)
         {
             if (!_enabled || _localInventory == null || minion == null) return;
@@ -193,8 +176,7 @@ namespace CookBook
         private static void UpdateSnapshot()
         {
             if (!_enabled || _localInventory == null) return;
-            _isDroneScrapperPresent = CheckForDroneScrapper();
-            if (CheckTradeAvailabilityChanged()) _tradeDirty = true;
+            _isDroneScrapperPresent = CheckForScrapper();
 
             // This logic is to hide recipes that that involve the uncorrupted version of an item that the user has a corrupted version of
             HashSet<ItemIndex> currentCorrupted = new HashSet<ItemIndex>();
@@ -212,9 +194,8 @@ namespace CookBook
             int totalLen = ItemCatalog.itemCount + EquipmentCatalog.equipmentCount;
             _changedIndices.Clear();
 
-            if (!_itemsDirty && !_dronesDirty && !_remoteDirty && !_tradeDirty && _hasSnapshot) return;
+            if (!_itemsDirty && !_dronesDirty && !_remoteDirty && _hasSnapshot) return;
 
-            // Local Items
             if (_itemsDirty || _cachedLocalPhysical == null)
             {
                 int[] newPhysical = GetUnifiedStacksFor(_localInventory);
@@ -235,7 +216,6 @@ namespace CookBook
                 _itemsDirty = false;
             }
 
-            // Drones
             if (_dronesDirty || _cachedGlobalDronePotential == null)
             {
                 _globalScrapCandidates.Clear();
@@ -256,9 +236,7 @@ namespace CookBook
                 _dronesDirty = false;
             }
 
-            bool forceFullRebuild = _remoteDirty || _tradeDirty;
             _remoteDirty = false;
-            _tradeDirty = false;
 
             if (_changedIndices.Count == 0 && _hasSnapshot && !_dronesDirty && !_remoteDirty) return;
 
@@ -274,7 +252,7 @@ namespace CookBook
             );
 
             _hasSnapshot = true;
-            OnInventoryChangedWithIndices?.Invoke((int[])combinedTotal.Clone(), forceFullRebuild ? null : new HashSet<int>(_changedIndices));
+            OnInventoryChangedWithIndices?.Invoke((int[])combinedTotal.Clone(), new HashSet<int>(_changedIndices));
         }
 
         private static void AccumulateGlobalDrones(NetworkUser user, int[] globalPotentialBuffer)
@@ -323,28 +301,6 @@ namespace CookBook
             }
 
             return false;
-        }
-
-        private static bool CheckTradeAvailabilityChanged()
-        {
-            bool changed = false;
-            if (!CookBook.AllowMultiplayerPooling.Value) return false;
-
-            foreach (var playerController in PlayerCharacterMasterController.instances)
-            {
-                var netUser = playerController.networkUser;
-                if (!netUser || netUser.localUser == GetLocalUser()) continue;
-
-                int currentTrades = TradeTracker.GetRemainingTrades(netUser);
-                _lastTradeCounts.TryGetValue(netUser, out int lastTrades);
-
-                if (currentTrades != lastTrades)
-                {
-                    _lastTradeCounts[netUser] = currentTrades;
-                    changed = true;
-                }
-            }
-            return changed;
         }
 
         //----------------------------------- Binding Logic -----------------------------------
@@ -402,7 +358,7 @@ namespace CookBook
         }
 
         //--------------------------------- Helpers ------------------------------------------
-        private static bool CheckForDroneScrapper()
+        private static bool CheckForScrapper()
         {
             if (UnityEngine.Object.FindObjectOfType<DroneScrapperController>() != null) return true;
             foreach (var go in UnityEngine.Object.FindObjectsOfType<GameObject>())
