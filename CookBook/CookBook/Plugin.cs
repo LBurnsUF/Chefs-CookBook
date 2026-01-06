@@ -123,6 +123,7 @@ namespace CookBook
             CraftUI.Init(Log); // Initialize craft UI injection
             ChatNetworkHandler.Init(Log);
             RegisterAssets.Init();
+            VanillaCraftingTrace.Init(Log);
             //RecipeTrackerUI.Init(Log);
 
             ItemCatalog.availability.CallWhenAvailable(() =>
@@ -177,6 +178,7 @@ namespace CookBook
             RecipeProvider.OnRecipesBuilt += StateController.OnRecipesBuilt;
             DialogueHooks.ChefUiOpened += StateController.OnChefUiOpened;
             DialogueHooks.ChefUiClosed += StateController.OnChefUiClosed;
+            On.RoR2.CraftingController.FilterAvailableOptions += RecipeFilter.PatchVanillaNRE;
         }
 
         private void OnDestroy()
@@ -197,6 +199,8 @@ namespace CookBook
 
             DialogueHooks.ChefUiOpened -= StateController.OnChefUiOpened;
             DialogueHooks.ChefUiClosed -= StateController.OnChefUiClosed;
+
+            On.RoR2.CraftingController.FilterAvailableOptions -= RecipeFilter.PatchVanillaNRE;
 
             RecipeProvider.Shutdown();
             StateController.Shutdown();

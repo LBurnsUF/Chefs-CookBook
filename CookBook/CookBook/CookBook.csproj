@@ -25,6 +25,7 @@
 		<Compile Include="StateController.cs" />
 		<Compile Include="TierManager.cs" />
 		<Compile Include="TradeTracker.cs" />
+		<Compile Include="VanillaCraftingTrace.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

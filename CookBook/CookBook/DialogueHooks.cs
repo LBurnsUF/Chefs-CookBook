@@ -69,7 +69,7 @@ namespace CookBook
             CraftingController controller = prompt.GetComponent<CraftingController>();
             if (controller == null)
             {
-                _log.LogError("[CookBook] UI opened but no CraftingController found on GameObject.");
+                _log.LogError("[CookBook] UI closed but no CraftingController found on GameObject.");
                 return;
             }
             ChefUiClosed?.Invoke(controller);

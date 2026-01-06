@@ -2,6 +2,7 @@
 using RoR2;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Linq;
 using UnityEngine;
 using static CookBook.CraftPlanner;
@@ -34,30 +35,33 @@ namespace CookBook
             _craftingRoutine = _runner.StartCoroutine(CraftChainRoutine(chain, repeatCount));
         }
 
+        private static void Cleanup(bool closeUi = false)
+        {
+            _craftingRoutine = null;
+
+            StateController.BatchMode = false;
+
+            CompleteCurrentObjective();
+
+            if (closeUi && StateController.ActiveCraftingController)
+                CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
+        }
+
+
         public static void Abort()
         {
             if (_runner != null && _craftingRoutine != null)
-            {
                 _runner.StopCoroutine(_craftingRoutine);
-            }
 
-            _craftingRoutine = null;
-            StateController.BatchMode = false;
-
-            if (_currentObjective != null)
-            {
-                _currentObjective.Complete();
-                _currentObjective = null;
-            }
-
-            if (StateController.ActiveCraftingController)
-                CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
+            Cleanup(closeUi: true);
         }
 
         private static IEnumerator CraftChainRoutine(CraftPlanner.RecipeChain chain, int repeatCount)
         {
+            CompleteCurrentObjective();
+            StateController.BatchMode = false;
+
             var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
-            if (!body) { Abort(); yield break; }
             var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
 
             Dictionary<int, int> tierMaxNeeded = new Dictionary<int, int>();
@@ -72,7 +76,6 @@ namespace CookBook
 
             Dictionary<int, int> startCounts = new Dictionary<int, int>();
             Dictionary<int, int> currentProgress = new Dictionary<int, int>();
-
 
             if (chain.DroneCostSparse != null && chain.DroneCostSparse.Length > 0)
             {
@@ -145,9 +148,17 @@ namespace CookBook
             int totalSteps = craftQueue.Count;
             int completedSteps = 0;
 
+            StateController.BatchMode = true;
+
             while (craftQueue.Count > 0)
             {
                 if (CookBook.AbortKey.Value.IsPressed()) { Abort(); yield break; }
+
+                body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
+                if (!body) { Abort(); yield break; }
+
+                ChefRecipe step = craftQueue.Peek();
+                string stepName = GetStepName(step);
 
                 if (lastPickup != PickupIndex.none)
                 {
@@ -158,178 +169,458 @@ namespace CookBook
                     lastPickup = PickupIndex.none;
                 }
 
-                ChefRecipe step = craftQueue.Peek();
-
-                body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
-                if (body)
+                if (step.Ingredients != null)
                 {
                     foreach (var ing in step.Ingredients)
                     {
-                        if (!ing.IsItem)
+                        if (CookBook.AbortKey.Value.IsPressed()) { Abort(); yield break; }
+
+                        if (!ing.IsItem && ing.EquipIndex != EquipmentIndex.None)
                         {
-                            SetObjectiveText($"Preparing {GetStepName(step)}...");
+                            SetObjectiveText($"Preparing {stepName}...");
                             yield return EnsureEquipmentIsActive(body, ing.EquipIndex);
                         }
                     }
                 }
 
-                while (StateController.ActiveCraftingController == null)
+                if (StateController.ActiveCraftingController == null)
                 {
-                    body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
-                    var interactor = body?.GetComponent<Interactor>();
+                    yield return EnsureCraftingControllerOpen();
+                }
 
-                    if (!StateController.TargetCraftingObject || !body || !interactor)
+                var controller = StateController.ActiveCraftingController;
+                if (!controller)
+                {
+                    Cleanup(closeUi: true);
+                    yield break;
+                }
+
+                var desired = ResolveStepIngredients(step);
+                yield return SubmitIngredientsClientSafe(controller, desired);
+
+                if (controller != null && controller.AllSlotsFilled() && IngredientsMatchMultiset(controller.ingredients, ResolveStepIngredients(step)))
+                {
+                    _log.LogInfo($"[Execution] {stepName} verified. Confirming craft...");
+
+                    craftQueue.Dequeue();
+                    completedSteps++;
+
+                    lastQty = step.ResultCount;
+                    lastPickup = GetPickupIndex(step);
+
+                    var prompt = controller.GetComponent<NetworkUIPromptController>();
+                    if (!prompt || prompt.currentParticipantMaster == null)
                     {
-                        _log.LogWarning("Lost target or body during assembly. Aborting.");
-                        Abort();
+                        _log.LogWarning("[Execution] Not confirming: participant master is null.");
                         yield break;
                     }
 
-                    SetObjectiveText("Approach Wandering CHEF");
-                    float maxDist = interactor.maxInteractionDistance + 6f;
-                    float distSqr = (body.corePosition - StateController.TargetCraftingObject.transform.position).sqrMagnitude;
+                    controller.ConfirmSelection();
 
-                    if (distSqr <= (maxDist * maxDist))
-                    {
-                        interactor.AttemptInteraction(StateController.TargetCraftingObject);
-                    }
+                    yield return new WaitForEndOfFrame();
+                    CraftUI.CloseCraftPanel(controller);
                     yield return new WaitForSeconds(0.2f);
+
+                    continue;
                 }
 
-                if (StateController.ActiveCraftingController != null)
-                {
-                    var controller = StateController.ActiveCraftingController;
-
-                    string stepName = GetStepName(step);
-                    SetObjectiveText($"Processing {stepName}...");
-
-                    StateController.BatchMode = true;
-                    controller.ClearAllSlots();
-
-                    bool submitAttempted = SubmitIngredients(controller, step);
-
-                    if (submitAttempted)
-                    {
-                        float syncTimeout = 2.0f;
-                        while (controller != null && !controller.AllSlotsFilled() && syncTimeout > 0)
-                        {
-                            syncTimeout -= Time.deltaTime;
-                            yield return null;
-                        }
-
-                        if (controller != null && controller.AllSlotsFilled())
-                        {
-                            _log.LogInfo($"[Execution] {stepName} verified and server-synced.");
-
-                            craftQueue.Dequeue();
-                            completedSteps++;
-
-                            lastQty = step.ResultCount;
-                            lastPickup = GetPickupIndex(step);
-
-                            controller.ConfirmSelection();
-                            yield return new WaitForEndOfFrame();
-                            CraftUI.CloseCraftPanel(controller);
-
-                            StateController.BatchMode = false;
-                            StateController.ForceRebuild();
-
-                            yield return new WaitForSeconds(0.2f);
-                            continue;
-                        }
-                    }
-
-                    _log.LogWarning($"[Execution] {stepName} failed to sync (Server/Client mismatch). Retrying...");
-                    StateController.BatchMode = false;
-
-                    yield return new WaitForSeconds(0.2f);
-                }
+                if (StateController.ActiveCraftingController)
+                    CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
             }
 
-            if (lastPickup != PickupIndex.none) yield return WaitForPendingPickup(lastPickup, lastQty);
+            if (lastPickup != PickupIndex.none)
+            {
+                StateController.BatchMode = false;
+
+                var def = PickupCatalog.GetPickupDef(lastPickup);
+                SetObjectiveText($"Collect {Language.GetString(def?.nameToken ?? "Result")}");
+                yield return WaitForPendingPickup(lastPickup, lastQty);
+                CompleteCurrentObjective();
+            }
+
             _log.LogInfo($"[ExecutionHandler] Finished {completedSteps}/{totalSteps} steps.");
-            Abort();
+            Cleanup(closeUi: true);
         }
 
-        private static IEnumerator HandleAcquisition(PickupIndex pi, int inventoryGoal, string actionPrefix)
+        private static bool IsCraftingSessionReady(CraftingController c)
         {
-            var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
-            var def = PickupCatalog.GetPickupDef(pi);
-            if (!body || def == null) yield break;
+            if (!c) return false;
 
-            string itemName = Language.GetString(def.nameToken);
+            var prompt = c.GetComponent<NetworkUIPromptController>();
+            if (!prompt) return false;
 
-            while (true)
-            {
-                int current = GetOwnedCount(def, body);
-                int remaining = inventoryGoal - current;
+            if (prompt.currentParticipantMaster == null) return false;
+            if (!prompt.isDisplaying) return false;
 
-                if (remaining <= 0) break;
+            var panels = UnityEngine.Object.FindObjectsOfType<RoR2.UI.CraftingPanel>();
+            for (int i = 0; i < panels.Length; i++)
+                if (panels[i] && panels[i].craftingController == c) return true;
 
-                SetObjectiveText($"{actionPrefix} {itemName} <style=cSub>(Need {remaining})</style>"); //
-
-                yield return new WaitForSeconds(0.1f);
-            }
-
-            CompleteCurrentObjective();
+            return false;
         }
 
-        private static IEnumerator WaitForPendingPickup(PickupIndex pickupIndex, int expectedGain)
+        private static IEnumerator EnsureCraftingControllerOpen()
         {
-            var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
-            if (!body || !body.inventory) yield break;
+            const float pollInterval = 0.2f;
+            const float hardTimeout = 12.0f;
 
-            var def = PickupCatalog.GetPickupDef(pickupIndex);
-            if (def == null) yield break;
+            float t = 0f;
 
-            int targetCount = GetOwnedCount(def, body) + expectedGain;
-
-            while (true)
+            while (!IsCraftingSessionReady(StateController.ActiveCraftingController))
             {
-                if (GetOwnedCount(def, body) >= targetCount)
+                if (CookBook.AbortKey.Value.IsPressed())
                 {
-                    _log.LogDebug($"[Chain] Confirmed pickup of {def.internalName}.");
+                    Abort();
                     yield break;
                 }
-                yield return new WaitForSeconds(0.1f);
+
+                var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
+                var interactor = body ? body.GetComponent<Interactor>() : null;
+
+                if (!StateController.TargetCraftingObject && body)
+                    StateController.TargetCraftingObject = TryResolveChefStationObject(body);
+
+                if (!StateController.TargetCraftingObject || !body || !interactor)
+                {
+                    _log.LogWarning("[Execution] Lost target/body/interactor while trying to open crafting UI. Aborting.");
+                    Abort();
+                    yield break;
+                }
+
+                SetObjectiveText("Approach Wandering CHEF");
+
+                float maxDist = interactor.maxInteractionDistance + 6f;
+                float distSqr = (body.corePosition - StateController.TargetCraftingObject.transform.position).sqrMagnitude;
+
+                if (distSqr <= maxDist * maxDist)
+                    interactor.AttemptInteraction(StateController.TargetCraftingObject);
+
+                t += Time.unscaledDeltaTime;
+                if (t >= hardTimeout)
+                {
+                    _log.LogWarning("[Execution] Timed out opening crafting UI.");
+                    Cleanup(closeUi: true);
+                    yield break;
+                }
+
+                yield return new WaitForSecondsRealtime(pollInterval);
             }
         }
 
-        private static bool SubmitIngredients(CraftingController controller, ChefRecipe recipe)
+        private static List<PickupIndex> ResolveStepIngredients(ChefRecipe step)
         {
-            var options = controller.options;
-            if (options == null || options.Length == 0)
+            var list = new List<PickupIndex>(step.Ingredients.Sum(i => Mathf.Max(0, i.Count)));
+
+            foreach (var ing in step.Ingredients)
             {
-                return false;
+                int c = Mathf.Max(0, ing.Count);
+                if (c == 0) continue;
+
+                PickupIndex pickup;
+                if (ing.IsItem)
+                    pickup = PickupCatalog.FindPickupIndex(ing.ItemIndex);
+                else
+                    pickup = PickupCatalog.FindPickupIndex(ing.EquipIndex);
+
+                for (int k = 0; k < c; k++)
+                    list.Add(pickup);
             }
 
-            foreach (var ing in recipe.Ingredients)
+            return list;
+        }
+
+        private static bool TryFindChoiceIndex(CraftingController c, PickupIndex desired, out int choiceIndex)
+        {
+            choiceIndex = -1;
+            var opts = c.options;
+            if (opts == null) return false;
+
+            for (int i = 0; i < opts.Length; i++)
             {
-                PickupIndex target = ing.IsItem
-                    ? PickupCatalog.FindPickupIndex(ing.ItemIndex)
-                    : PickupCatalog.FindPickupIndex(ing.EquipIndex);
-
-                if (target == PickupIndex.none) continue;
-
-                int choiceIndex = -1;
-                for (int j = 0; j < options.Length; j++)
+                if (opts[i].pickup.pickupIndex == desired)
                 {
-                    if (options[j].pickup.pickupIndex == target)
+                    choiceIndex = i;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsChoiceIndexStillValid(CraftingController c, int idx, PickupIndex desired)
+        {
+            var opts = c.options;
+            if (opts == null) return false;
+            if ((uint)idx >= (uint)opts.Length) return false;
+
+            var opt = opts[idx];
+            return opt.available && opt.pickup.pickupIndex == desired;
+        }
+
+        private static void SubmitChoiceToCraftingController(CraftingController c, int choiceIndex)
+        {
+            var prompt = c.GetComponent<NetworkUIPromptController>();
+            if (!prompt) return;
+
+            var w = prompt.BeginMessageToServer();
+            if (w == null) return;
+
+            w.Write((byte)0);
+            w.Write(choiceIndex);
+            prompt.FinishMessageToServer(w);
+        }
+
+        private static IEnumerator SubmitIngredientsClientSafe(CraftingController controller, List<PickupIndex> desired)
+        {
+            if (!controller || desired == null) yield break;
+
+            var prompt = controller.GetComponent<NetworkUIPromptController>();
+
+            float t = 2.0f;
+            while (t > 0f && (!controller || !prompt || prompt.currentParticipantMaster == null))
+            {
+                t -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+            if (!controller || !prompt || prompt.currentParticipantMaster == null)
+            {
+                _log.LogError("[Crafting] Participant Master not ready. Station not synced.");
+                yield break;
+            }
+
+            if (desired.Count != controller.ingredientCount)
+            {
+                _log.LogWarning($"[Crafting] Ingredient count mismatch. step needs {desired.Count}, controller has {controller.ingredientCount} slots.");
+                yield break;
+            }
+
+            for (int i = 0; i < controller.ingredientCount; i++)
+            {
+                if (controller.ingredients != null && i < controller.ingredients.Length && controller.ingredients[i] != PickupIndex.none)
+                    controller.ClearSlot(i);
+            }
+
+            float clearBudget = 1.0f;
+            while (clearBudget > 0f)
+            {
+                if (!controller) yield break;
+
+                var slots = controller.ingredients;
+                if (slots != null)
+                {
+                    bool anyFilled = false;
+                    for (int i = 0; i < slots.Length; i++)
                     {
-                        choiceIndex = j;
-                        break;
+                        if (slots[i] != PickupIndex.none) { anyFilled = true; break; }
+                    }
+                    if (!anyFilled) break;
+                }
+
+                clearBudget -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            for (int k = 0; k < desired.Count; k++)
+            {
+                if (!controller) yield break;
+
+                var want = desired[k];
+                bool inserted = false;
+
+                float insertBudget = 2.0f;
+                while (!inserted && insertBudget > 0f)
+                {
+                    if (!controller) yield break;
+
+                    if (controller.AllSlotsFilled() && !IngredientsMatchMultiset(controller.ingredients, desired))
+                    {
+                        _log.LogWarning("[Crafting] Station became full with wrong ingredients. Aborting insert to avoid accidental confirm.");
+                        yield break;
+                    }
+
+                    var opts = controller.options;
+                    if (opts == null || opts.Length == 0)
+                    {
+                        insertBudget -= Time.unscaledDeltaTime;
+                        yield return null;
+                        continue;
+                    }
+
+                    if (!TryFindChoiceIndex(controller, want, out int idx) || !IsChoiceIndexStillValid(controller, idx, want))
+                    {
+                        insertBudget -= Time.unscaledDeltaTime;
+                        yield return null;
+                        continue;
+                    }
+
+                    var opt = controller.options[idx];
+                    _log.LogDebug($"[Crafting] Pick want={want} choiceIndex={idx} optPickup={opt.pickup.pickupIndex} available={opt.available}");
+
+                    int filledBefore = CountFilled(controller.ingredients);
+                    int wantCountBefore = CountOf(controller.ingredients, want);
+
+                    SubmitChoiceToCraftingController(controller, idx);
+
+                    yield return new WaitForSecondsRealtime(0.10f);
+
+                    float progressBudget = 1.0f;
+                    bool progressed = false;
+                    while (progressBudget > 0f)
+                    {
+                        if (!controller) yield break;
+
+                        var slots = controller.ingredients;
+                        if (CountFilled(slots) >= filledBefore + 1 && CountOf(slots, want) > wantCountBefore)
+                        {
+                            progressed = true;
+                            break;
+                        }
+
+                        progressBudget -= Time.unscaledDeltaTime;
+                        yield return null;
+                    }
+
+                    if (!progressed)
+                    {
+                        _log.LogDebug($"[Crafting] No fill-progress observed for {want}, retrying...");
+                        insertBudget -= 0.25f;
+                        continue;
+                    }
+
+                    float settleBudget = 0.75f;
+                    while (settleBudget > 0f)
+                    {
+                        if (!controller) yield break;
+
+                        if (IngredientsMatchPrefixMultiset(controller.ingredients, desired, k + 1))
+                        {
+                            inserted = true;
+                            break;
+                        }
+
+                        settleBudget -= Time.unscaledDeltaTime;
+                        yield return null;
+                    }
+
+                    if (!inserted)
+                    {
+                        _log.LogDebug($"[Crafting] Change observed but state did not settle for {want}, retrying...");
+                        insertBudget -= 0.25f;
                     }
                 }
 
-                if (choiceIndex == -1) return false;
-
-                for (int i = 0; i < ing.Count; i++)
+                if (!inserted)
                 {
-                    controller.SubmitChoice(choiceIndex);
+                    _log.LogWarning($"[Crafting] Failed to insert ingredient {k + 1}/{desired.Count}: {want}");
+                    yield break;
                 }
+            }
+
+            float syncBudget = 2.0f;
+            while (syncBudget > 0f)
+            {
+                if (!controller) yield break;
+
+                if (IngredientsMatchMultiset(controller.ingredients, desired))
+                    yield break;
+
+                syncBudget -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            _log.LogWarning("[Crafting] Timed out waiting for ingredient sync.");
+        }
+
+        private static bool IngredientsMatchPrefixMultiset(PickupIndex[] current, List<PickupIndex> desired, int insertedCount)
+        {
+            if (current == null || desired == null) return false;
+
+            var expected = new Dictionary<int, int>();
+            for (int i = 0; i < insertedCount; i++)
+            {
+                int v = desired[i].value;
+                expected.TryGetValue(v, out int c);
+                expected[v] = c + 1;
+            }
+
+            var actual = new Dictionary<int, int>();
+            for (int i = 0; i < current.Length; i++)
+            {
+                var p = current[i];
+                if (p == PickupIndex.none) continue;
+
+                int v = p.value;
+                actual.TryGetValue(v, out int c);
+                actual[v] = c + 1;
+            }
+
+            if (actual.Count != expected.Count) return false;
+            foreach (var kv in expected)
+            {
+                if (!actual.TryGetValue(kv.Key, out int c)) return false;
+                if (c != kv.Value) return false;
+            }
+            return true;
+        }
+
+        private static bool IngredientsMatchMultiset(PickupIndex[] actualSlots, List<PickupIndex> desired)
+        {
+            if (actualSlots == null) return false;
+            if (actualSlots.Length != desired.Count) return false;
+
+            var a = new Dictionary<PickupIndex, int>();
+            var b = new Dictionary<PickupIndex, int>();
+
+            for (int i = 0; i < actualSlots.Length; i++)
+            {
+                var p = actualSlots[i];
+                if (p == PickupIndex.none) return false;
+                a[p] = a.TryGetValue(p, out int c) ? c + 1 : 1;
+            }
+
+            for (int i = 0; i < desired.Count; i++)
+            {
+                var p = desired[i];
+                b[p] = b.TryGetValue(p, out int c) ? c + 1 : 1;
+            }
+
+            if (a.Count != b.Count) return false;
+            foreach (var kv in a)
+            {
+                if (!b.TryGetValue(kv.Key, out int bc)) return false;
+                if (bc != kv.Value) return false;
             }
 
             return true;
+        }
+
+        private static int HashIngredients(PickupIndex[] arr)
+        {
+            if (arr == null) return 0;
+            unchecked
+            {
+                int h = 17;
+                for (int i = 0; i < arr.Length; i++)
+                    h = h * 31 + arr[i].value;
+                return h;
+            }
+        }
+
+        private static int CountFilled(PickupIndex[] slots)
+        {
+            if (slots == null) return 0;
+            int n = 0;
+            for (int i = 0; i < slots.Length; i++)
+                if (slots[i] != PickupIndex.none) n++;
+            return n;
+        }
+
+        private static int CountOf(PickupIndex[] slots, PickupIndex p)
+        {
+            if (slots == null) return 0;
+            int n = 0;
+            for (int i = 0; i < slots.Length; i++)
+                if (slots[i] == p) n++;
+            return n;
         }
 
         private static IEnumerator EnsureEquipmentIsActive(CharacterBody body, EquipmentIndex target)
@@ -402,6 +693,79 @@ namespace CookBook
                     timeout -= 0.1f;
                     yield return new WaitForSeconds(0.1f);
                 }
+            }
+        }
+
+        private static GameObject TryResolveChefStationObject(CharacterBody body)
+        {
+            if (!body) return null;
+
+            var stations = UnityEngine.Object.FindObjectsOfType<RoR2.MealPrepController>();
+            if (stations == null || stations.Length == 0) return null;
+
+            RoR2.MealPrepController best = null;
+            float bestDistSqr = float.PositiveInfinity;
+
+            Vector3 p = body.corePosition;
+            foreach (var s in stations)
+            {
+                if (!s) continue;
+                float d = (s.transform.position - p).sqrMagnitude;
+                if (d < bestDistSqr)
+                {
+                    bestDistSqr = d;
+                    best = s;
+                }
+            }
+
+            if (!best) return null;
+
+            var interactable = best.GetComponentInChildren<RoR2.IInteractable>() as Component;
+            return interactable ? interactable.gameObject : best.gameObject;
+        }
+
+
+        private static IEnumerator HandleAcquisition(PickupIndex pi, int inventoryGoal, string actionPrefix)
+        {
+            var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
+            var def = PickupCatalog.GetPickupDef(pi);
+            if (!body || def == null) yield break;
+
+            string itemName = Language.GetString(def.nameToken);
+
+            while (true)
+            {
+                int current = GetOwnedCount(def, body);
+                int remaining = inventoryGoal - current;
+
+                if (remaining <= 0) break;
+
+                SetObjectiveText($"{actionPrefix} {itemName} <style=cSub>(Need {remaining})</style>");
+
+                yield return new WaitForSeconds(0.1f);
+            }
+
+            CompleteCurrentObjective();
+        }
+
+        private static IEnumerator WaitForPendingPickup(PickupIndex pickupIndex, int expectedGain)
+        {
+            var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
+            if (!body || !body.inventory) yield break;
+
+            var def = PickupCatalog.GetPickupDef(pickupIndex);
+            if (def == null) yield break;
+
+            int targetCount = GetOwnedCount(def, body) + expectedGain;
+
+            while (true)
+            {
+                if (GetOwnedCount(def, body) >= targetCount)
+                {
+                    _log.LogDebug($"[Chain] Confirmed pickup of {def.internalName}.");
+                    yield break;
+                }
+                yield return new WaitForSeconds(0.1f);
             }
         }
 

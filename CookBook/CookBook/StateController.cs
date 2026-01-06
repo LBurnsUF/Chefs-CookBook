@@ -23,8 +23,8 @@ namespace CookBook
         private static Coroutine _throttleRoutine;
 
         // Crafting Parameters
-        internal static CraftingController ActiveCraftingController { get; private set; }
-        internal static GameObject TargetCraftingObject { get; private set; }
+        internal static CraftingController ActiveCraftingController { get; set; }
+        internal static GameObject TargetCraftingObject { get; set; }
         internal static bool IsAutoCrafting => CraftingExecutionHandler.IsAutoCrafting;
         public static bool BatchMode { get; set; } = false;
 
@@ -214,6 +214,7 @@ namespace CookBook
 
             InventoryTracker.OnInventoryChangedWithIndices -= OnInventoryChanged;
             _subscribedInventoryHandler = false;
+            BatchMode = false;
 
             CraftingExecutionHandler.Abort();
             ObjectiveTracker.Cleanup();
@@ -231,12 +232,14 @@ namespace CookBook
             if (!IsChefStage()) return;
 
             ActiveCraftingController = controller;
-            TargetCraftingObject = controller.gameObject;
+
+            var interactable = controller.GetComponentInParent<IInteractable>();
+            TargetCraftingObject = (interactable as Component)?.gameObject ?? controller.gameObject;
 
             if (IsAutoCrafting) return;
-
             CraftUI.Attach(ActiveCraftingController);
         }
+
 
         internal static void OnChefUiClosed(CraftingController controller)
         {
@@ -246,6 +249,22 @@ namespace CookBook
                 ActiveCraftingController = null;
             }
         }
+
+        internal static void TryReleasePromptParticipant(CraftingController controller)
+        {
+            if (!controller || !UnityEngine.Networking.NetworkClient.active) return;
+
+            var prompt = controller.GetComponent<NetworkUIPromptController>();
+            if (!prompt) return;
+
+            var w = prompt.BeginMessageToServer();
+            if (w == null) return;
+            w.Write((byte)1);
+            prompt.FinishMessageToServer(w);
+
+        }
+
+
 
         //-------------------------------- Craft Handling ----------------------------------
         internal static void RequestCraft(CraftPlanner.RecipeChain chain, int count)

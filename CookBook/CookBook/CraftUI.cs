@@ -263,9 +263,7 @@ namespace CookBook
             BuildSharedHoverRect();
             sw.Stop();
             _log.LogInfo($"CraftUI: Skeleton & Templates built in {sw.ElapsedMilliseconds}ms");
-
             if (LastCraftables != null && LastCraftables.Count > 0) PopulateRecipeList(LastCraftables);
-            On.RoR2.CraftingController.FilterAvailableOptions += RecipeFilter.InterceptIngredientAvailability;
         }
 
         internal static void Detach()
@@ -277,7 +275,6 @@ namespace CookBook
             }
 
             if (_globalCraftButton != null) _globalCraftButton.onClick.RemoveAllListeners();
-            On.RoR2.CraftingController.FilterAvailableOptions -= RecipeFilter.InterceptIngredientAvailability;
             _recipeRowUIs.Clear();
             _iconCache.Clear();
             _droneIconCache.Clear();
@@ -293,26 +290,27 @@ namespace CookBook
         internal static void CloseCraftPanel(CraftingController specificController = null)
         {
             var target = specificController ? specificController : _currentController;
-
             if (!target) return;
 
-            if (_runner != null && _activeBuildRoutine != null)
-            {
-                _runner.StopCoroutine(_activeBuildRoutine);
-                _activeBuildRoutine = null;
-            }
+            StateController.TryReleasePromptParticipant(target);
 
             var openPanels = UnityEngine.Object.FindObjectsOfType<CraftingPanel>();
-            foreach (var panel in openPanels)
+            for (int i = 0; i < openPanels.Length; i++)
             {
-                if (panel.craftingController == target)
+                var panel = openPanels[i];
+                if (panel && panel.craftingController == target)
                 {
                     UnityEngine.Object.Destroy(panel.gameObject);
-                    Detach();
-                    return;
+                    break;
                 }
             }
+
+            Detach();
+
+            if (StateController.ActiveCraftingController == target)
+                StateController.ActiveCraftingController = null;
         }
+
 
         internal static void Shutdown()
         {
@@ -1610,17 +1608,17 @@ namespace CookBook
 
             label.spriteAsset = RecipeFilter.CurrentCategory switch
             {
-                RecipeFilterCategory.Damage => RegisterAssets.CombatIconAsset,
-                RecipeFilterCategory.Healing => RegisterAssets.HealingIconAsset,
-                RecipeFilterCategory.Utility => RegisterAssets.UtilityIconAsset,
+                RecipeFilter.RecipeFilterCategory.Damage => RegisterAssets.CombatIconAsset,
+                RecipeFilter.RecipeFilterCategory.Healing => RegisterAssets.HealingIconAsset,
+                RecipeFilter.RecipeFilterCategory.Utility => RegisterAssets.UtilityIconAsset,
                 _ => null
             };
 
             label.color = RecipeFilter.CurrentCategory switch
             {
-                RecipeFilterCategory.Damage => new Color32(255, 75, 50, 255),
-                RecipeFilterCategory.Healing => new Color32(119, 255, 117, 255),
-                RecipeFilterCategory.Utility => new Color32(172, 104, 248, 255),
+                RecipeFilter.RecipeFilterCategory.Damage => new Color32(255, 75, 50, 255),
+                RecipeFilter.RecipeFilterCategory.Healing => new Color32(119, 255, 117, 255),
+                RecipeFilter.RecipeFilterCategory.Utility => new Color32(172, 104, 248, 255),
                 _ => Color.white
             };
 
