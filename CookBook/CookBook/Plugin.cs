@@ -16,7 +16,7 @@ namespace CookBook
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "rainorshine";
         public const string PluginName = "CookBook";
-        public const string PluginVersion = "1.2.9";
+        public const string PluginVersion = "1.2.10";
 
         internal static ManualLogSource Log;
 
@@ -26,21 +26,38 @@ namespace CookBook
         public static ConfigEntry<string> TierOrder;
         public static ConfigEntry<KeyboardShortcut> AbortKey;
         public static ConfigEntry<bool> AllowMultiplayerPooling;
+        public static ConfigEntry<bool> ConsiderDrones;
         public static ConfigEntry<bool> PreventCorruptedCrafting;
+        public static ConfigEntry<bool> DebugMode;
+        public static ConfigEntry<bool> ShowCorruptedResults;
         internal static ConfigEntry<IndexSortMode> InternalSortOrder;
         internal static Dictionary<ItemTier, ConfigEntry<TierPriority>> TierPriorities = new();
+
+        public static int DepthLimit => MaxDepth.Value;
+        public static int ChainsLimit => MaxChainsPerResult.Value;
+        public static int ThrottleMs => ComputeThrottleMs.Value;
+        public static bool IsPoolingEnabled => AllowMultiplayerPooling.Value;
+        public static bool IsDroneScrappingEnabled => ConsiderDrones.Value;
+        public static bool ShouldBlockCorrupted => PreventCorruptedCrafting.Value;
+        public static bool isDebugMode => DebugMode.Value;
+
 
         public void Awake()
         {
             Log = Logger;
             Log.LogInfo("CookBook: Awake()");
 
-
             AllowMultiplayerPooling = Config.Bind(
-                "General",
+                "Logic",
                 "Allow Multiplayer Pooling",
-                false,
+                true,
                 "If true, the planner will include items owned by teammates in its search (requires SPEX trades)."
+            );
+            ConsiderDrones = Config.Bind(
+                "Logic",
+                "Consider Drones for Crafting",
+                true,
+                "If enabled, the planner will include scrappable drones (potential scrap) in recipe calculations."
             );
             AbortKey = Config.Bind(
                 "General",
@@ -48,7 +65,6 @@ namespace CookBook
                 new KeyboardShortcut(KeyCode.LeftAlt),
                 "Key to hold to abort an active auto-crafting sequence."
             );
-
             MaxDepth = Config.Bind(
                 "Logic",
                 "Max Chain Depth",
@@ -60,6 +76,12 @@ namespace CookBook
                 "Prevent Corrupted Crafting",
                 true,
                 "If enabled, recipes for base items will be hidden/disabled if you hold their Void counterpart (e.g., hiding Ukulele recipes if you have Polylute)."
+            );
+            ShowCorruptedResults = Config.Bind(
+                "UI",
+                "Show Corrupted Results",
+                true,
+                "Display corrupted versions of craft results if corrupt version already owned."
             );
 
             ComputeThrottleMs = Config.Bind(
@@ -86,6 +108,12 @@ namespace CookBook
                 "FoodTier,NoTier,Equipment,Boss,Tier3,Tier2,Tier1,VoidTier3,VoidTier2,VoidTier1,Lunar",
                 "The CSV order of item tiers for sorting. Tiers earlier in the list appear higher in the UI."
             );
+            DebugMode = Config.Bind<bool>(
+                "Logging",
+                "Enable Debug Mode",
+                false,
+                "When enabled, the console will show detailed recipe chain calculations and execution dumps."
+            );
 
             TierManager.Init(Log);
             RecipeProvider.Init(Log); // Parse all chef recipe rules
@@ -95,7 +123,7 @@ namespace CookBook
             CraftUI.Init(Log); // Initialize craft UI injection
             ChatNetworkHandler.Init(Log);
             RegisterAssets.Init();
-            RecipeTrackerUI.Init(Log);
+            //RecipeTrackerUI.Init(Log);
 
             ItemCatalog.availability.CallWhenAvailable(() =>
             {
@@ -140,6 +168,8 @@ namespace CookBook
                 }
             });
 
+            ConsiderDrones.SettingChanged += InventoryTracker.OnConsiderDronesChanged;
+            ShowCorruptedResults.SettingChanged += StateController.OnShowCorruptedResultsChanged;
             MaxDepth.SettingChanged += StateController.OnMaxDepthChanged;
             MaxChainsPerResult.SettingChanged += StateController.OnMaxChainsPerResultChanged;
             InternalSortOrder.SettingChanged += TierManager.OnTierPriorityChanged;
@@ -156,7 +186,10 @@ namespace CookBook
             {
                 if (tierEntry != null) tierEntry.SettingChanged -= TierManager.OnTierPriorityChanged;
             }
+
+            ShowCorruptedResults.SettingChanged -= StateController.OnShowCorruptedResultsChanged;
             MaxDepth.SettingChanged -= StateController.OnMaxDepthChanged;
+            ConsiderDrones.SettingChanged -= InventoryTracker.OnConsiderDronesChanged;
             MaxChainsPerResult.SettingChanged -= StateController.OnMaxChainsPerResultChanged;
             // Clean up global event subscriptions
             RecipeProvider.OnRecipesBuilt -= StateController.OnRecipesBuilt;

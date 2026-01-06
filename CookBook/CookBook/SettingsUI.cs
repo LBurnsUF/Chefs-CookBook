@@ -21,9 +21,15 @@ namespace CookBook
             ModSettingsManager.SetModDescription("QOL crafting automation for wandering CHEF.");
 
             ModSettingsManager.AddOption(new KeyBindOption(CookBook.AbortKey));
+
             ModSettingsManager.AddOption(new CheckBoxOption(CookBook.AllowMultiplayerPooling));
+            ModSettingsManager.AddOption(new CheckBoxOption(CookBook.ConsiderDrones));
             ModSettingsManager.AddOption(new CheckBoxOption(CookBook.PreventCorruptedCrafting));
+            ModSettingsManager.AddOption(new CheckBoxOption(CookBook.ShowCorruptedResults));
+
             ModSettingsManager.AddOption(new ChoiceOption(CookBook.InternalSortOrder));
+            ModSettingsManager.AddOption(new CheckBoxOption(CookBook.DebugMode));
+
 
             ModSettingsManager.AddOption(new IntSliderOption(CookBook.MaxDepth, new IntSliderConfig
             {

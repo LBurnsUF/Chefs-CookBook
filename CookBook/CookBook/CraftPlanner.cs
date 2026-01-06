@@ -8,25 +8,27 @@ namespace CookBook
 {
     internal sealed class CraftPlanner
     {
+        private readonly ManualLogSource _log;
+        private int _maxDepth;
+
         public int SourceItemCount { get; }
-        private readonly IReadOnlyList<ChefRecipe> _recipes;
         private readonly int _itemCount;
         private readonly int _totalDefCount;
-        private int _maxDepth;
-        private readonly ManualLogSource _log;
-        private bool _voidcraftsrestricted = true;
+
+        private readonly HashSet<int> _dirtyIndices = new();
         private readonly HashSet<int> _allIngredientIndices = new();
-        private readonly int[] _maxDemand;
         private readonly HashSet<int> _transientIngredients = new();
         private HashSet<ItemIndex> _lastKnownCorrupted = new();
 
+        private readonly int[] _maxDemand;
         private readonly int[] _needsBuffer;
         private readonly int[] _productionBuffer;
-        private readonly List<Ingredient> _tempPhysList = new();
-        private readonly List<Ingredient> _tempDroneList = new();
-        private readonly HashSet<int> _dirtyIndices = new();
-        private Dictionary<int, CraftableEntry> _entryCache = new();
 
+        private readonly List<Ingredient> _tempPhysList = new();
+        private readonly List<DroneRequirement> _tempDroneReqList = new();
+        private readonly IReadOnlyList<ChefRecipe> _recipes;
+
+        private Dictionary<int, CraftableEntry> _entryCache = new();
         internal event Action<List<CraftableEntry>> OnCraftablesUpdated;
 
         public CraftPlanner(IReadOnlyList<ChefRecipe> recipes, int maxDepth, ManualLogSource log)
@@ -66,16 +68,11 @@ namespace CookBook
             }
         }
 
-        public void ComputeCraftable(int[] unifiedStacks, HashSet<int> changedIndices = null, bool forceUpdate = false)
+        public void ComputeCraftable(int[] unifiedStacks, IReadOnlyList<ChefRecipe> recipes, bool canScrapDrones, HashSet<int> changedIndices = null, bool forceUpdate = false)
         {
             if (!StateController.IsChefStage() || unifiedStacks == null) return;
 
-            _voidcraftsrestricted = CookBook.PreventCorruptedCrafting.Value;
-
-            var currentCorrupted = InventoryTracker.GetCorruptedIndices();
-            bool corruptionShifted = !currentCorrupted.SetEquals(_lastKnownCorrupted);
-
-            if (!forceUpdate && !_voidcraftsrestricted && !corruptionShifted && changedIndices != null && changedIndices.Count > 0 && _entryCache.Count > 0)
+            if (!forceUpdate && changedIndices != null && changedIndices.Count > 0 && _entryCache.Count > 0)
             {
                 bool impacted = false;
                 foreach (var idx in changedIndices)
@@ -85,32 +82,36 @@ namespace CookBook
                         impacted = true;
                         break;
                     }
+
+                    if (IsTransformedItemRelevant(idx))
+                    {
+                        impacted = true;
+                        break;
+                    }
                 }
 
                 if (!impacted)
                 {
-                    var cachedResult = _entryCache.Values.ToList();
-                    cachedResult.Sort(TierManager.CompareCraftableEntries);
-                    OnCraftablesUpdated?.Invoke(cachedResult);
+                    RefreshVisualOverridesAndEmit();
                     return;
                 }
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            var transientRecipes = RecipeProvider.GetFilteredRecipes(InventoryTracker.GetCorruptedIndices());
             _transientIngredients.Clear();
-            foreach (var r in transientRecipes) foreach (var ing in r.Ingredients) _transientIngredients.Add(ing.UnifiedIndex);
+            foreach (var r in recipes)
+                foreach (var ing in r.Ingredients) _transientIngredients.Add(ing.UnifiedIndex);
 
             var discovered = new Dictionary<int, List<RecipeChain>>();
             var seenSignatures = new HashSet<long>();
             var queue = new Queue<RecipeChain>();
 
-            foreach (var recipe in transientRecipes)
+            foreach (var recipe in recipes)
             {
-                if (isRecipeAffordable(unifiedStacks, recipe, null))
+                if (isRecipeAffordable(unifiedStacks, recipe, canScrapDrones, null))
                 {
-                    var (phys, drone, trades) = CalculateSplitCosts(null, recipe);
+                    var (phys, drone, trades) = CalculateSplitCosts(null, recipe, canScrapDrones, unifiedStacks);
                     if (phys == null) continue;
 
                     long sig = (long)recipe.GetHashCode();
@@ -119,7 +120,7 @@ namespace CookBook
                 }
             }
 
-            if (CookBook.AllowMultiplayerPooling.Value) InjectTradeRecipes(null, discovered, queue, seenSignatures, _transientIngredients);
+            if (CookBook.IsPoolingEnabled) InjectTradeRecipes(null, discovered, queue, seenSignatures, _transientIngredients);
 
             for (int d = 2; d <= _maxDepth; d++)
             {
@@ -129,16 +130,16 @@ namespace CookBook
                 for (int i = 0; i < layerSize; i++)
                 {
                     var existingChain = queue.Dequeue();
-                    foreach (var nextRecipe in transientRecipes)
+                    foreach (var nextRecipe in recipes)
                     {
                         if (!IsCausallyLinked(existingChain, nextRecipe)) continue;
 
                         long newSig = RecipeChain.CalculateRollingSignature(existingChain.CanonicalSignature, nextRecipe);
                         if (!seenSignatures.Add(newSig)) continue;
 
-                        if (isRecipeAffordable(unifiedStacks, nextRecipe, existingChain))
+                        if (isRecipeAffordable(unifiedStacks, nextRecipe, canScrapDrones, existingChain))
                         {
-                            var (phys, drone, trades) = CalculateSplitCosts(existingChain, nextRecipe);
+                            var (phys, drone, trades) = CalculateSplitCosts(existingChain, nextRecipe, canScrapDrones, unifiedStacks);
                             if (phys == null) continue;
 
                             var extendedSteps = existingChain.Steps.Concat(new[] { nextRecipe }).ToList();
@@ -170,25 +171,31 @@ namespace CookBook
                 };
             }).Where(e => e != null).ToDictionary(e => e.ResultIndex);
 
-            var finalResult = _entryCache.Values.ToList();
-            finalResult.Sort(TierManager.CompareCraftableEntries);
+            var finalResults = _entryCache.Values.ToList();
 
+            RefreshVisualOverridesAndEmit();
+
+            finalResults.Sort(TierManager.CompareCraftableEntries);
             sw.Stop();
-            _log.LogDebug($"[Planner] Rebuild complete: {sw.ElapsedMilliseconds}ms for {finalResult.Count} entries.");
-            OnCraftablesUpdated?.Invoke(finalResult);
+
+            _log.LogDebug($"[Planner] Rebuild complete: {sw.ElapsedMilliseconds}ms for {finalResults.Count} entries.");
         }
 
         private bool IsCausallyLinked(RecipeChain chain, ChefRecipe next)
         {
-            foreach (var ing in next.Ingredients) if (GetNetSurplus(chain, ing.UnifiedIndex) > 0) return true;
-
-            int candidateResultIndex = next.ResultIndex;
-            int globalMaxDemand = _maxDemand[candidateResultIndex];
-
-            if (globalMaxDemand > 1)
+            foreach (var ing in next.Ingredients)
             {
-                int surplus = GetNetSurplus(chain, candidateResultIndex);
-                if (surplus < globalMaxDemand) return true;
+                if (GetNetSurplus(chain, ing.UnifiedIndex) > 0) return true;
+            }
+
+            int resultIdx = next.ResultIndex;
+            int maxDemandForThisItem = _maxDemand[resultIdx];
+
+            if (maxDemandForThisItem > 1)
+            {
+                int currentSurplus = GetNetSurplus(chain, resultIdx);
+                if (currentSurplus > 0 && currentSurplus < maxDemandForThisItem)
+                    return true;
             }
 
             return false;
@@ -197,7 +204,8 @@ namespace CookBook
         private bool IsChainInefficient(RecipeChain chain)
         {
             int inputWeight = GetWeightedCost(chain);
-            int goalValue = GetNetSurplus(chain, chain.ResultIndex) * GetItemWeight(chain.ResultIndex);
+            int intentionalYield = chain.ResultCount;
+            int goalValue = intentionalYield * GetItemWeight(chain.ResultIndex);
 
             return inputWeight > goalValue * 2;
         }
@@ -220,30 +228,20 @@ namespace CookBook
             return false;
         }
 
-        private bool isRecipeAffordable(int[] totalStacks, ChefRecipe recipe, RecipeChain existingChain)
+        private bool isRecipeAffordable(int[] totalStacks, ChefRecipe recipe, bool scrapperPresent, RecipeChain existingChain)
         {
             foreach (var ing in recipe.Ingredients)
             {
                 int idx = ing.UnifiedIndex;
-                int totalProduced = 0;
-                int totalConsumed = ing.Count;
 
-                if (existingChain != null)
-                {
-                    foreach (var step in existingChain.Steps)
-                    {
-                        if (step.ResultIndex == idx) totalProduced += step.ResultCount;
-                        foreach (var sIng in step.Ingredients) if (sIng.UnifiedIndex == idx) totalConsumed += sIng.Count;
-                    }
-                }
+                int surplus = (existingChain == null) ? 0 : GetNetSurplus(existingChain, idx);
 
-                int netDeficit = totalConsumed - totalProduced;
+                int netDeficit = Math.Max(0, ing.Count - surplus);
+
                 if (netDeficit <= 0) continue;
 
                 int physical = totalStacks[idx];
-                int potential = InventoryTracker.DroneScrapperPresent()
-                    ? InventoryTracker.GetGlobalDronePotentialCount(idx)
-                    : 0;
+                int potential = scrapperPresent ? InventoryTracker.GetGlobalDronePotentialCount(idx) : 0;
 
                 if (physical + potential < netDeficit) return false;
             }
@@ -295,7 +293,7 @@ namespace CookBook
                         var newChain = new RecipeChain(
                             newSteps,
                             chain?.PhysicalCostSparse ?? Array.Empty<Ingredient>(),
-                            chain?.DroneCostSparse ?? Array.Empty<Ingredient>(),
+                            chain?.DroneCostSparse ?? Array.Empty<DroneRequirement>(),
                             tradeRequirements,
                             sig
                         );
@@ -309,19 +307,64 @@ namespace CookBook
         /// <summary>
         /// Highly optimized cost calculation using reusable array buffers.
         /// </summary>
-        private (Ingredient[] phys, Ingredient[] drone, TradeRequirement[] trades) CalculateSplitCosts(RecipeChain old, ChefRecipe next)
+        private (Ingredient[] phys, DroneRequirement[] drones, TradeRequirement[] trades) CalculateSplitCosts(
+            RecipeChain old,
+            ChefRecipe next,
+            bool canScrapDrones,
+            int[] inventory)
         {
-            foreach (int idx in _dirtyIndices) { _needsBuffer[idx] = 0; _productionBuffer[idx] = 0; }
-            _dirtyIndices.Clear();
+            // 1. Reset ONLY the temporary resolution lists
+            ClearCostBuffers();
+
+            // 2. INHERIT: Confirmation of previous sacrifices
+            if (old != null)
+            {
+                _tempPhysList.AddRange(old.PhysicalCostSparse);
+                _tempDroneReqList.AddRange(old.DroneCostSparse);
+            }
+
+            // 3. RESOLVE NEXT: Check ingredients for ONLY the next recipe
+            foreach (var ing in next.Ingredients)
+            {
+                int idx = ing.UnifiedIndex;
+
+                // See what we have available internally from steps already completed
+                int surplus = (old == null) ? 0 : GetNetSurplus(old, idx);
+
+                // Deficit is only what we can't cover with existing surplus
+                int deficit = Math.Max(0, ing.Count - surplus);
+
+                if (deficit > 0)
+                {
+                    if (!ResolveRequirement(idx, deficit, canScrapDrones, inventory))
+                    {
+                        return (null, null, null);
+                    }
+                }
+            }
+
+            var trades = ExtractTrades(old, next);
+
+            // Consolidated Physical list to prevent UI row duplication
+            var consolidatedPhys = _tempPhysList
+                .GroupBy(i => i.UnifiedIndex)
+                .Select(g => new Ingredient(g.Key, g.Sum(i => i.Count)))
+                .ToArray();
+
+            return (consolidatedPhys, _tempDroneReqList.ToArray(), trades);
+        }
+
+        private void ClearCostBuffers()
+        {
             _tempPhysList.Clear();
-            _tempDroneList.Clear();
+            _tempDroneReqList.Clear();
+        }
 
-            if (old != null) foreach (var step in old.Steps) TallyStep(step);
-            TallyStep(next);
+        private TradeRequirement[] ExtractTrades(RecipeChain old, ChefRecipe next)
+        {
+            var allSteps = old != null ? old.Steps.Append(next) : new[] { next };
 
-            _productionBuffer[next.ResultIndex] -= next.ResultCount;
-
-            var trades = (old != null ? old.Steps.Concat(new[] { next }) : new[] { next })
+            return allSteps
                 .OfType<TradeRecipe>()
                 .GroupBy(t => new { t.Donor, t.ItemUnifiedIndex })
                 .Select(g => new TradeRequirement
@@ -331,52 +374,52 @@ namespace CookBook
                     Count = g.Count()
                 })
                 .ToArray();
-
-            var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
-
-            foreach (int idx in _dirtyIndices)
-            {
-                int net = _needsBuffer[idx] - _productionBuffer[idx];
-                if (net <= 0) continue;
-
-                int physOwned = InventoryTracker.GetPhysicalCount(idx);
-                int payWithPhysical = Math.Min(physOwned, net);
-                int deficit = net - payWithPhysical;
-
-                int globalDronePotential = InventoryTracker.DroneScrapperPresent()
-                    ? InventoryTracker.GetGlobalDronePotentialCount(idx)
-                    : 0;
-
-                if (deficit > 0)
-                {
-                    if (deficit > globalDronePotential) return (null, null, null);
-                    _tempDroneList.Add(new Ingredient(idx, deficit));
-                }
-
-                if (payWithPhysical > 0) _tempPhysList.Add(new Ingredient(idx, payWithPhysical));
-            }
-
-            Ingredient[] sortedDrones = _tempDroneList
-                .OrderBy(d =>
-                {
-                    var candidate = InventoryTracker.GetScrapCandidate(d.UnifiedIndex);
-                    bool isLocal = (candidate.Owner == null || candidate.Owner == localUser);
-                    return isLocal ? 1 : 0;
-                })
-                .ToArray();
-
-            return (_tempPhysList.ToArray(), sortedDrones, trades);
         }
 
-        private void TallyStep(ChefRecipe step)
+        private bool ResolveRequirement(int unifiedIndex, int amountNeeded, bool scrapperPresent, int[] inventory)
         {
-            _productionBuffer[step.ResultIndex] += step.ResultCount;
-            _dirtyIndices.Add(step.ResultIndex);
-            foreach (var ing in step.Ingredients)
+            // High-performance direct access
+            int physOwned = inventory[unifiedIndex];
+            int payWithPhysical = Math.Min(physOwned, amountNeeded);
+            int deficit = amountNeeded - payWithPhysical;
+
+            if (payWithPhysical > 0)
             {
-                _needsBuffer[ing.UnifiedIndex] += ing.Count;
-                _dirtyIndices.Add(ing.UnifiedIndex);
+                _tempPhysList.Add(new Ingredient(unifiedIndex, payWithPhysical));
             }
+
+            if (deficit > 0)
+            {
+                if (!scrapperPresent) return false;
+
+                var candidates = InventoryTracker.GetScrapCandidates(unifiedIndex);
+                if (candidates == null) return false;
+
+                int remainingDeficit = deficit;
+                foreach (var candidate in candidates)
+                {
+                    int availableInDrone = DroneUpgradeUtils.GetDroneCountFromUpgradeCount(candidate.UpgradeCount);
+                    int take = Math.Min(remainingDeficit, availableInDrone);
+
+                    if (take > 0)
+                    {
+                        _tempDroneReqList.Add(new DroneRequirement
+                        {
+                            Owner = candidate.Owner,
+                            DroneIdx = candidate.DroneIdx,
+                            Count = take,
+                            TotalUpgradeCount = candidate.UpgradeCount,
+                            ScrapIndex = unifiedIndex
+                        });
+                        remainingDeficit -= take;
+                    }
+                    if (remainingDeficit <= 0) break;
+                }
+
+                if (remainingDeficit > 0) return false;
+            }
+
+            return true;
         }
 
         private int GetNetSurplus(RecipeChain chain, int itemIndex)
@@ -418,9 +461,22 @@ namespace CookBook
         private int GetWeightedCost(RecipeChain chain)
         {
             int total = 0;
-            foreach (var ing in chain.PhysicalCostSparse) total += GetItemWeight(ing.UnifiedIndex) * ing.Count;
-            foreach (var ing in chain.DroneCostSparse) total += GetItemWeight(ing.UnifiedIndex) * ing.Count;
-            foreach (var trade in chain.AlliedTradeSparse) total += GetItemWeight(trade.UnifiedIndex) * trade.Count;
+
+            // Physical items cost what is consumed
+            foreach (var ing in chain.PhysicalCostSparse)
+                total += GetItemWeight(ing.UnifiedIndex) * ing.Count;
+
+            // Drones cost their FULL value because the entity is destroyed
+            foreach (var drone in chain.DroneCostSparse)
+            {
+                // Use the total potential of the drone, not just the 'Count' used for this recipe
+                int totalDronePotential = DroneUpgradeUtils.GetDroneCountFromUpgradeCount(drone.TotalUpgradeCount);
+                total += GetItemWeight(drone.ScrapIndex) * totalDronePotential;
+            }
+
+            foreach (var trade in chain.AlliedTradeSparse)
+                total += GetItemWeight(trade.UnifiedIndex) * trade.Count;
+
             return total;
         }
 
@@ -429,6 +485,9 @@ namespace CookBook
             foreach (var step in candidate.Steps)
             {
                 int itemIdx = step.ResultIndex;
+
+                if (itemIdx == candidate.ResultIndex) continue;
+
                 if (GetNetSurplus(baseline, itemIdx) < GetNetSurplus(candidate, itemIdx))
                 {
                     return false;
@@ -453,10 +512,49 @@ namespace CookBook
             }
 
             if (IsChainInefficient(chain) || IsChainDominated(chain, results)) return;
-            if (list.Count >= CookBook.MaxChainsPerResult.Value) return;
+            if (list.Count >= CookBook.ChainsLimit) return;
 
             list.Add(chain);
             queue.Enqueue(chain);
+        }
+
+        internal void RefreshVisualOverridesAndEmit()
+        {
+            if (_entryCache == null || _entryCache.Count == 0) return;
+
+            var finalResults = _entryCache.Values.ToList();
+
+            foreach (var entry in finalResults)
+            {
+                int rawIdx = entry.Chains.FirstOrDefault()?.Steps.LastOrDefault()?.ResultIndex ?? entry.ResultIndex;
+
+                if (CookBook.ShowCorruptedResults.Value)
+                {
+                    int visualOverride = InventoryTracker.GetVisualResultIndex(rawIdx);
+                    entry.ResultIndex = (visualOverride != -1) ? visualOverride : rawIdx;
+                }
+                else
+                {
+                    entry.ResultIndex = rawIdx;
+                }
+            }
+
+            finalResults.Sort(TierManager.CompareCraftableEntries);
+            OnCraftablesUpdated?.Invoke(finalResults);
+        }
+
+        private bool IsTransformedItemRelevant(int unifiedIndex)
+        {
+            if (unifiedIndex >= ItemCatalog.itemCount) return false;
+            ItemIndex itemIdx = (ItemIndex)unifiedIndex;
+
+            foreach (var info in RoR2.Items.ContagiousItemManager.transformationInfos)
+            {
+                // If the changed item is the void counterpart to something we can craft, it is relevant
+                if (info.transformedItem == itemIdx && _entryCache.ContainsKey((int)info.originalItem))
+                    return true;
+            }
+            return false;
         }
 
         internal sealed class TradeRecipe : ChefRecipe
@@ -500,7 +598,7 @@ namespace CookBook
             internal IReadOnlyList<ChefRecipe> Steps { get; }
 
             internal Ingredient[] PhysicalCostSparse { get; }
-            internal Ingredient[] DroneCostSparse { get; }
+            internal DroneRequirement[] DroneCostSparse { get; }
             internal TradeRequirement[] AlliedTradeSparse { get; }
             internal int ResultIndex => Steps.Last().ResultIndex;
             internal int ResultCount => Steps.Last().ResultCount;
@@ -509,13 +607,13 @@ namespace CookBook
 
             internal RecipeChain(IEnumerable<ChefRecipe> steps,
                          IEnumerable<Ingredient> phys,
-                         IEnumerable<Ingredient> drones,
+                         IEnumerable<DroneRequirement> drones,
                          IEnumerable<TradeRequirement> trades,
                          long? signature = null)
             {
                 Steps = steps.ToArray();
                 PhysicalCostSparse = phys?.Where(i => i.Count > 0).ToArray() ?? Array.Empty<Ingredient>();
-                DroneCostSparse = drones?.Where(i => i.Count > 0).ToArray() ?? Array.Empty<Ingredient>();
+                DroneCostSparse = drones?.Where(i => i.Count > 0).ToArray() ?? Array.Empty<DroneRequirement>();
                 AlliedTradeSparse = trades?.ToArray() ?? Array.Empty<TradeRequirement>();
 
                 CanonicalSignature = signature ?? CalculateCanonicalSignature(Steps);
@@ -535,23 +633,26 @@ namespace CookBook
                     max = Math.Min(max, localPhysical[cost.UnifiedIndex] / cost.Count);
                 }
 
-                foreach (var cost in DroneCostSparse)
+                var tierNeeds = new Dictionary<int, int>();
+                foreach (var drone in DroneCostSparse)
                 {
-                    if (cost.Count == 0) continue;
-                    max = Math.Min(max, dronePotential[cost.UnifiedIndex] / cost.Count);
+                    if (drone.Count == 0) continue;
+                    if (!tierNeeds.ContainsKey(drone.ScrapIndex)) tierNeeds[drone.ScrapIndex] = 0;
+                    tierNeeds[drone.ScrapIndex] += drone.Count;
+                }
+
+                foreach (var kvp in tierNeeds)
+                {
+                    max = Math.Min(max, dronePotential[kvp.Key] / kvp.Value);
                 }
 
                 foreach (var trade in AlliedTradeSparse)
                 {
                     if (trade.Count == 0) continue;
-
                     if (!alliedSnapshots.TryGetValue(trade.Donor, out int[] donorInv)) return 0;
-                    int itemsAffordable = donorInv[trade.UnifiedIndex] / trade.Count;
-
                     if (!remainingTrades.TryGetValue(trade.Donor, out int tradesLeft)) return 0;
-                    int tradesAffordable = tradesLeft / trade.Count;
 
-                    max = Math.Min(max, Math.Min(itemsAffordable, tradesAffordable));
+                    max = Math.Min(max, Math.Min(donorInv[trade.UnifiedIndex] / trade.Count, tradesLeft / trade.Count));
                 }
 
                 return max == int.MaxValue ? 0 : max;
@@ -566,6 +667,15 @@ namespace CookBook
             }
 
             internal static long CalculateRollingSignature(long currentSignature, ChefRecipe next) { return currentSignature ^ (long)next.GetHashCode(); }
+        }
+
+        internal struct DroneRequirement
+        {
+            public NetworkUser Owner;
+            public DroneIndex DroneIdx;
+            public int Count;
+            public int TotalUpgradeCount;
+            public int ScrapIndex;
         }
     }
 }
