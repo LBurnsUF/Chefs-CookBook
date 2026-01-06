@@ -227,14 +227,6 @@ namespace CookBook
 
             foreach (var recipe in _recipes)
             {
-                if (recipe.ResultIndex < ItemCatalog.itemCount)
-                {
-                    if (corruptedIndices.Contains((ItemIndex)recipe.ResultIndex))
-                    {
-                        continue;
-                    }
-                }
-
                 bool hasCorruptedIngredient = false;
                 foreach (var ingredient in recipe.Ingredients)
                 {

@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace CookBook
 {
-    internal static class CraftingObjectiveTracker
+    internal static class ObjectiveTracker
     {
         private static readonly List<ObjectiveToken> _activeObjectives = new List<ObjectiveToken>();
 
@@ -176,8 +176,9 @@ namespace CookBook
             protected override string GenerateString()
             {
                 if (!MyToken) return string.Empty;
+
                 string keyName = CookBook.AbortKey.Value.MainKey.ToString();
-                return $"{MyToken.RawText} <style=cSub>(Hold {keyName} to Cancel)</style>";
+                return $"{MyToken.RawText} <style=cSub>[Hold {keyName} to Cancel]</style>";
             }
         }
     }

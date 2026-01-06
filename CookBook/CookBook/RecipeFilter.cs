@@ -22,6 +22,12 @@ namespace CookBook
 
         public static void InterceptIngredientAvailability(On.RoR2.CraftingController.orig_FilterAvailableOptions orig, CraftingController self)
         {
+            var prompt = self.GetComponent<NetworkUIPromptController>();
+            if (prompt == null || prompt.currentParticipantMaster == null)
+            {
+                return;
+            }
+
             orig(self);
 
             if (!StateController.IsChefStage() || CurrentCategory == RecipeFilterCategory.All) return;
@@ -65,7 +71,6 @@ namespace CookBook
             };
         }
 
-
         public static void ApplyFiltersToUI(List<CraftUI.RecipeRowUI> rows, string searchTerm)
         {
             if (rows == null) return;
@@ -86,10 +91,15 @@ namespace CookBook
         public static bool EntryMatchesFilter(CraftableEntry entry)
         {
             if (CurrentCategory == RecipeFilterCategory.All) return true;
-            if (!entry.IsItem) return false;
 
-            ItemDef def = ItemCatalog.GetItemDef(entry.ResultItem);
-            return def != null && def.ContainsTag(CategoryToTag[CurrentCategory]);
+            int displayIdx = entry.ResultIndex;
+            if (displayIdx < ItemCatalog.itemCount)
+            {
+                ItemDef def = ItemCatalog.GetItemDef((ItemIndex)displayIdx);
+                return def != null && def.ContainsTag(CategoryToTag[CurrentCategory]);
+            }
+
+            return false;
         }
 
         internal static bool EntryMatchesSearch(CraftableEntry entry, string term)
@@ -111,9 +121,10 @@ namespace CookBook
 
             foreach (var entry in allCraftables)
             {
-                if (!entry.IsItem) continue;
+                // Ensure we check the visual result index for the tag
+                if (entry.ResultIndex >= ItemCatalog.itemCount) continue;
 
-                ItemDef def = ItemCatalog.GetItemDef(entry.ResultItem);
+                ItemDef def = ItemCatalog.GetItemDef((ItemIndex)entry.ResultIndex);
                 if (def != null && def.ContainsTag(targetTag))
                 {
                     if (entry.Chains != null && entry.Chains.Count > 0)

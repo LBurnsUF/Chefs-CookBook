@@ -1,6 +1,22 @@
 # Changelog
 Dates are listed in `MM/DD/YY` format.
 
+
+---
+
+## v1.2.10 — 1/5/26
+### Fixed
+- Fixed drone list not updating after drone death
+- Drone tier is now properly factored into its itemweight calculation
+- Added many safety guards in state controller.
+### Changed
+- Simplified InventoryTracker to only hook oninventorychangeglobal rather than both local and global
+- Reduced the complexity of the efficiency culling logic significantly. (tested with all items with quality mod 650 ms -> 370 ms)
+- Now only rebuilds craftables if the dirtied drone index actually contributed to chains
+- 
+### Added
+- Added a toggle to visually display the voided item you will receive if you crafting an item you already own the void version of
+- added a toggle for debug mode to add some extra prints at the crafting execution stage so you can see how a craft chain looks step-by-step.
 ---
 
 ## v1.2.9 — 1/2/26

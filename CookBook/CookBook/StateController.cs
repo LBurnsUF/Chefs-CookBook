@@ -135,7 +135,7 @@ namespace CookBook
         // -------------------- CookBook Handshake Events --------------------
         private static void OnNetworkObjectiveReceived(NetworkUser sender, string command, int unifiedIdx, int quantity)
         {
-            CraftingObjectiveTracker.AddAlliedRequest(sender, command, unifiedIdx, quantity);
+            ObjectiveTracker.AddAlliedRequest(sender, command, unifiedIdx, quantity);
         }
 
         internal static void OnRecipesBuilt(IReadOnlyList<ChefRecipe> recipes)
@@ -159,7 +159,7 @@ namespace CookBook
 
         internal static void OnTierOrderChanged()
         {
-            if (_lastCraftables == null || !IsChefStage()) return;
+            if (_lastCraftables == null || _lastCraftables.Count == 0 || !IsChefStage()) return;
             _lastCraftables.Sort(TierManager.CompareCraftableEntries);
             OnCraftablesForUIChanged?.Invoke(_lastCraftables);
         }
@@ -186,6 +186,12 @@ namespace CookBook
             }
         }
 
+        internal static void OnShowCorruptedResultsChanged(object sender, EventArgs e)
+        {
+            StateController.ForceVisualRefresh();
+        }
+
+
         // -------------------- Chef Events --------------------
         private static void EnableChef()
         {
@@ -196,7 +202,7 @@ namespace CookBook
                 InventoryTracker.OnInventoryChangedWithIndices += OnInventoryChanged;
                 _subscribedInventoryHandler = true;
             }
-            CraftingObjectiveTracker.Init();
+            ObjectiveTracker.Init();
             CraftingExecutionHandler.Init(_log, _craftingHandler);
             InventoryTracker.Enable();
             TargetCraftingObject = null;
@@ -210,7 +216,7 @@ namespace CookBook
             _subscribedInventoryHandler = false;
 
             CraftingExecutionHandler.Abort();
-            CraftingObjectiveTracker.Cleanup();
+            ObjectiveTracker.Cleanup();
             InventoryTracker.Disable();
 
             _planner = null;
@@ -287,6 +293,14 @@ namespace CookBook
         }
 
         //--------------------------------------- Helpers ----------------------------------------
+        internal static void ForceVisualRefresh()
+        {
+            if (!IsChefStage()) return;
+
+            _planner?.RefreshVisualOverridesAndEmit();
+        }
+
+
         internal static bool CheckForChefPresence()
         {
             if (UnityEngine.Object.FindObjectOfType<CraftingController>() != null)
@@ -304,7 +318,18 @@ namespace CookBook
         }
         internal static void ForceRebuild()
         {
-            if (_planner != null && IsChefStage()) _planner.ComputeCraftable(InventoryTracker.GetUnifiedStacksCopy(), null, false);
+            if (_planner == null || !IsChefStage()) return;
+
+            var snapshot = InventoryTracker.GetSnapshot();
+            if (snapshot.FilteredRecipes == null) return;
+
+            _planner.ComputeCraftable(
+                InventoryTracker.GetUnifiedStacksCopy(),
+                snapshot.FilteredRecipes,
+                snapshot.CanScrapDrones,
+                null,
+                true
+            );
         }
 
         /// <summary>
@@ -328,6 +353,7 @@ namespace CookBook
 
         private static void QueueThrottledCompute(int[] unifiedStacks, HashSet<int> changedIndices)
         {
+            if (!_craftingHandler) return;
             if (_throttleRoutine != null) _craftingHandler.StopCoroutine(_throttleRoutine);
             _throttleRoutine = _craftingHandler.StartCoroutine(ThrottledComputeRoutine(unifiedStacks, changedIndices));
         }
@@ -338,20 +364,36 @@ namespace CookBook
             yield return new WaitForSecondsRealtime(CookBook.ComputeThrottleMs.Value / 1000f);
             if (_planner == null) yield break;
 
+            var snapshot = InventoryTracker.GetSnapshot();
+
             if (ItemCatalog.itemCount != _planner.SourceItemCount)
             {
                 RecipeProvider.Rebuild();
-
                 SetPlanner(new CraftPlanner(RecipeProvider.Recipes, CookBook.MaxDepth.Value, _log));
             }
 
-            _planner.ComputeCraftable(unifiedStacks, changedIndices, false);
+            _planner.ComputeCraftable(
+                unifiedStacks,
+                snapshot.FilteredRecipes,
+                snapshot.CanScrapDrones,
+                changedIndices,
+                false
+            );
+
             _throttleRoutine = null;
         }
+        internal static bool IsChefStage() => CheckForChefPresence();
+        internal static void TakeSnapshot(int[] unifiedStacks)
+        {
+            if (_planner == null) return;
 
-        internal static bool IsChefStage(SceneDef sceneDef) => sceneDef && sceneDef.baseSceneName == "computationalexchange";
-        internal static bool IsChefStage() => IsChefStage(Stage.instance ? Stage.instance.sceneDef : null);
-        internal static void TakeSnapshot(int[] unifiedStacks) => _planner?.ComputeCraftable(unifiedStacks);
+            var snapshot = InventoryTracker.GetSnapshot();
+            _planner.ComputeCraftable(
+                unifiedStacks,
+                snapshot.FilteredRecipes,
+                snapshot.CanScrapDrones
+            );
+        }
         internal static SceneDef GetCurrentScene() => Stage.instance ? Stage.instance.sceneDef : null;
     }
 }

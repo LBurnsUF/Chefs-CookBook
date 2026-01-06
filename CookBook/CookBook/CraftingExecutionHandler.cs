@@ -12,7 +12,7 @@ namespace CookBook
     {
         private static ManualLogSource _log;
 
-        private static CraftingObjectiveTracker.ObjectiveToken _currentObjective;
+        private static ObjectiveTracker.ObjectiveToken _currentObjective;
         private static Coroutine _craftingRoutine;
         private static MonoBehaviour _runner;
 
@@ -26,6 +26,10 @@ namespace CookBook
 
         public static void ExecuteChain(CraftPlanner.RecipeChain chain, int repeatCount)
         {
+            if (CookBook.isDebugMode)
+            {
+                DumpChain(chain, repeatCount);
+            }
             Abort();
             _craftingRoutine = _runner.StartCoroutine(CraftChainRoutine(chain, repeatCount));
         }
@@ -38,6 +42,7 @@ namespace CookBook
             }
 
             _craftingRoutine = null;
+            StateController.BatchMode = false;
 
             if (_currentObjective != null)
             {
@@ -53,29 +58,59 @@ namespace CookBook
         {
             var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
             if (!body) { Abort(); yield break; }
+            var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
 
-            if (chain.DroneCostSparse != null && chain.DroneCostSparse.Length > 0)
+            Dictionary<int, int> tierMaxNeeded = new Dictionary<int, int>();
+            if (chain.DroneCostSparse != null)
             {
                 foreach (var req in chain.DroneCostSparse)
                 {
-                    PickupIndex pi = GetPickupIndexFromUnified(req.UnifiedIndex);
-                    DroneCandidate candidate = InventoryTracker.GetScrapCandidate(req.UnifiedIndex);
-                    string droneName = GetDroneName(req.UnifiedIndex);
+                    if (!tierMaxNeeded.ContainsKey(req.ScrapIndex)) tierMaxNeeded[req.ScrapIndex] = 0;
+                    tierMaxNeeded[req.ScrapIndex] += req.Count;
+                }
+            }
 
-                    bool isLocal = (candidate.Owner == null || candidate.Owner == LocalUserManager.GetFirstLocalUser()?.currentNetworkUser);
+            Dictionary<int, int> startCounts = new Dictionary<int, int>();
+            Dictionary<int, int> currentProgress = new Dictionary<int, int>();
 
-                    if (isLocal)
+
+            if (chain.DroneCostSparse != null && chain.DroneCostSparse.Length > 0)
+            {
+                localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
+
+                foreach (var req in chain.DroneCostSparse)
+                {
+                    if (!startCounts.ContainsKey(req.ScrapIndex))
                     {
-                        yield return HandleAcquisition(pi, req.Count, $"Scrap your {droneName}");
+                        var pi = GetPickupIndexFromUnified(req.ScrapIndex);
+                        startCounts[req.ScrapIndex] = GetOwnedCount(PickupCatalog.GetPickupDef(pi), body);
+                        currentProgress[req.ScrapIndex] = 0;
+                    }
+
+                    currentProgress[req.ScrapIndex] += req.Count;
+                    int inventoryGoal = startCounts[req.ScrapIndex] + currentProgress[req.ScrapIndex];
+                    string droneName = GetDroneName(req.DroneIdx);
+
+                    if (req.Owner == null || req.Owner == localUser)
+                    {
+                        yield return HandleAcquisition(
+                            GetPickupIndexFromUnified(req.ScrapIndex),
+                            inventoryGoal,
+                            $"Scrap {droneName} for"
+                        );
                     }
                     else
                     {
-                        ChatNetworkHandler.SendObjectiveRequest(candidate.Owner, "SCRAP", req.UnifiedIndex, req.Count);
+                        ChatNetworkHandler.SendObjectiveRequest(req.Owner, "SCRAP", req.ScrapIndex, req.Count);
+                        string teammateName = req.Owner?.userName ?? "Teammate";
 
-                        string teammateName = candidate.Owner?.userName ?? "Teammate";
-                        yield return HandleAcquisition(pi, req.Count, $"Wait for {teammateName} to scrap {droneName}");
+                        yield return HandleAcquisition(
+                            GetPickupIndexFromUnified(req.ScrapIndex),
+                            inventoryGoal,
+                            $"Wait for {teammateName} to scrap {droneName} for"
+                        );
 
-                        ChatNetworkHandler.SendObjectiveSuccess(candidate.Owner, req.UnifiedIndex);
+                        ChatNetworkHandler.SendObjectiveSuccess(req.Owner, req.ScrapIndex);
                     }
                 }
             }
@@ -86,10 +121,14 @@ namespace CookBook
                 {
                     PickupIndex pi = GetPickupIndexFromUnified(req.UnifiedIndex);
 
+                    int currentOwned = GetOwnedCount(PickupCatalog.GetPickupDef(pi), body);
+                    int tradeGoal = currentOwned + req.Count;
+
                     ChatNetworkHandler.SendObjectiveRequest(req.Donor, "TRADE", req.UnifiedIndex, req.Count);
 
                     string donorName = req.Donor?.userName ?? "Ally";
-                    yield return HandleAcquisition(pi, req.Count, $"Wait for {donorName} to trade");
+
+                    yield return HandleAcquisition(pi, tradeGoal, $"Wait for {donorName} to trade");
 
                     ChatNetworkHandler.SendObjectiveSuccess(req.Donor, req.UnifiedIndex);
                 }
@@ -99,12 +138,7 @@ namespace CookBook
             var singleChainSteps = chain.Steps.Where(s => !(s is TradeRecipe)).ToList();
 
             for (int i = 0; i < repeatCount; i++)
-            {
-                foreach (var step in singleChainSteps)
-                {
-                    craftQueue.Enqueue(step);
-                }
-            }
+                foreach (var step in singleChainSteps) craftQueue.Enqueue(step);
 
             PickupIndex lastPickup = PickupIndex.none;
             int lastQty = 0;
@@ -164,26 +198,25 @@ namespace CookBook
 
                 if (StateController.ActiveCraftingController != null)
                 {
+                    var controller = StateController.ActiveCraftingController;
+
                     string stepName = GetStepName(step);
                     SetObjectiveText($"Processing {stepName}...");
 
                     StateController.BatchMode = true;
-                    StateController.ActiveCraftingController.ClearAllSlots();
+                    controller.ClearAllSlots();
 
-                    bool submitAttempted = SubmitIngredients(StateController.ActiveCraftingController, step);
+                    bool submitAttempted = SubmitIngredients(controller, step);
 
                     if (submitAttempted)
                     {
                         float syncTimeout = 2.0f;
-                        while (StateController.ActiveCraftingController != null &&
-                               !StateController.ActiveCraftingController.AllSlotsFilled() &&
-                               syncTimeout > 0)
+                        while (controller != null && !controller.AllSlotsFilled() && syncTimeout > 0)
                         {
                             syncTimeout -= Time.deltaTime;
                             yield return null;
                         }
 
-                        var controller = StateController.ActiveCraftingController;
                         if (controller != null && controller.AllSlotsFilled())
                         {
                             _log.LogInfo($"[Execution] {stepName} verified and server-synced.");
@@ -195,12 +228,13 @@ namespace CookBook
                             lastPickup = GetPickupIndex(step);
 
                             controller.ConfirmSelection();
+                            yield return new WaitForEndOfFrame();
                             CraftUI.CloseCraftPanel(controller);
 
                             StateController.BatchMode = false;
                             StateController.ForceRebuild();
 
-                            if (craftQueue.Count > 0) yield return new WaitForSeconds(0.1f);
+                            yield return new WaitForSeconds(0.2f);
                             continue;
                         }
                     }
@@ -217,21 +251,26 @@ namespace CookBook
             Abort();
         }
 
-        private static IEnumerator HandleAcquisition(PickupIndex pi, int totalNeeded, string actionPrefix)
+        private static IEnumerator HandleAcquisition(PickupIndex pi, int inventoryGoal, string actionPrefix)
         {
             var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
             var def = PickupCatalog.GetPickupDef(pi);
             if (!body || def == null) yield break;
 
-            int current = GetOwnedCount(def, body);
-            if (current >= totalNeeded) yield break;
-
-            int remaining = totalNeeded - current;
             string itemName = Language.GetString(def.nameToken);
 
-            SetObjectiveText($"{actionPrefix} {itemName} <style=cSub>(Need {remaining})</style>");
+            while (true)
+            {
+                int current = GetOwnedCount(def, body);
+                int remaining = inventoryGoal - current;
 
-            yield return WaitForPendingPickup(pi, remaining);
+                if (remaining <= 0) break;
+
+                SetObjectiveText($"{actionPrefix} {itemName} <style=cSub>(Need {remaining})</style>"); //
+
+                yield return new WaitForSeconds(0.1f);
+            }
+
             CompleteCurrentObjective();
         }
 
@@ -249,7 +288,7 @@ namespace CookBook
             {
                 if (GetOwnedCount(def, body) >= targetCount)
                 {
-                    _log.LogInfo($"[Chain] Confirmed pickup of {def.internalName}.");
+                    _log.LogDebug($"[Chain] Confirmed pickup of {def.internalName}.");
                     yield break;
                 }
                 yield return new WaitForSeconds(0.1f);
@@ -258,8 +297,11 @@ namespace CookBook
 
         private static bool SubmitIngredients(CraftingController controller, ChefRecipe recipe)
         {
-            var body = LocalUserManager.GetFirstLocalUser()?.cachedBody;
             var options = controller.options;
+            if (options == null || options.Length == 0)
+            {
+                return false;
+            }
 
             foreach (var ing in recipe.Ingredients)
             {
@@ -272,7 +314,7 @@ namespace CookBook
                 int choiceIndex = -1;
                 for (int j = 0; j < options.Length; j++)
                 {
-                    if (options[j].pickup.pickupIndex == target && options[j].available)
+                    if (options[j].pickup.pickupIndex == target)
                     {
                         choiceIndex = j;
                         break;
@@ -283,20 +325,10 @@ namespace CookBook
 
                 for (int i = 0; i < ing.Count; i++)
                 {
-                    if (UnityEngine.Networking.NetworkServer.active)
-                    {
-                        controller.SendToSlot(target.value);
-                    }
-                    else
-                    {
-                        var promptController = controller.GetComponent<RoR2.NetworkUIPromptController>();
-                        var writer = promptController.BeginMessageToServer();
-                        writer.Write((byte)0); // msgSubmit
-                        writer.Write(choiceIndex);
-                        promptController.FinishMessageToServer(writer);
-                    }
+                    controller.SubmitChoice(choiceIndex);
                 }
             }
+
             return true;
         }
 
@@ -375,7 +407,7 @@ namespace CookBook
 
         private static int GetOwnedCount(PickupDef def, CharacterBody body)
         {
-            if (def.itemIndex != ItemIndex.None) return body.inventory.GetItemCountPermanent(def.itemIndex);
+            if (def.itemIndex != ItemIndex.None) return body.inventory.GetItemCountEffective(def.itemIndex);
             if (def.equipmentIndex != EquipmentIndex.None)
             {
                 var inv = body.inventory;
@@ -410,13 +442,11 @@ namespace CookBook
             return PickupCatalog.FindPickupIndex((EquipmentIndex)(step.ResultIndex - ItemCatalog.itemCount));
         }
 
-        private static string GetDroneName(int unifiedIndex)
+        private static string GetDroneName(DroneIndex droneIdx)
         {
-            DroneCandidate candidate = InventoryTracker.GetScrapCandidate(unifiedIndex);
-
-            if (candidate.DroneIdx != DroneIndex.None)
+            if (droneIdx != DroneIndex.None)
             {
-                var prefab = DroneCatalog.GetDroneDef(candidate.DroneIdx)?.bodyPrefab;
+                var prefab = DroneCatalog.GetDroneDef(droneIdx)?.bodyPrefab;
                 if (prefab && prefab.GetComponent<CharacterBody>() is CharacterBody b)
                 {
                     return Language.GetString(b.baseNameToken);
@@ -436,7 +466,7 @@ namespace CookBook
         {
             if (_currentObjective == null)
             {
-                _currentObjective = CraftingObjectiveTracker.CreateObjective(text);
+                _currentObjective = ObjectiveTracker.CreateObjective(text);
             }
             else
             {
@@ -451,6 +481,45 @@ namespace CookBook
                 _currentObjective.Complete();
                 _currentObjective = null;
             }
+        }
+
+        private static void DumpChain(CraftPlanner.RecipeChain chain, int repeatCount)
+        {
+            _log.LogInfo("┌──────────────────────────────────────────────────────────┐");
+            _log.LogInfo($"│ CHAIN EXECUTION: {GetItemName(chain.ResultIndex)} (x{repeatCount})");
+            _log.LogInfo("├──────────────────────────────────────────────────────────┘");
+
+            if (chain.DroneCostSparse.Length > 0)
+            {
+                _log.LogInfo("│ [Resources] Drones Needed:");
+                foreach (var drone in chain.DroneCostSparse)
+                    _log.LogInfo($"│   - {GetDroneName(drone.DroneIdx)} -> 1x {GetItemName(drone.ScrapIndex)}");
+            }
+
+            if (chain.AlliedTradeSparse.Length > 0)
+            {
+                _log.LogInfo("│ [Resources] Allied Trades:");
+                foreach (var trade in chain.AlliedTradeSparse)
+                    _log.LogInfo($"│   - {trade.Donor?.userName ?? "Ally"}: {trade.Count}x {GetItemName(trade.UnifiedIndex)}");
+            }
+
+            _log.LogInfo("│ [Workflow] Sequence:");
+            var singleChainSteps = chain.Steps.Where(s => !(s is TradeRecipe)).ToList();
+            for (int i = 0; i < singleChainSteps.Count; i++)
+            {
+                var step = singleChainSteps[i];
+                string ingredients = string.Join(", ", step.Ingredients.Select(ing => $"{ing.Count}x {GetItemName(ing.UnifiedIndex)}"));
+                _log.LogInfo($"│   Step {i + 1}: [{ingredients}] —> {step.ResultCount}x {GetItemName(step.ResultIndex)}");
+            }
+            _log.LogInfo("└──────────────────────────────────────────────────────────");
+        }
+
+        // Helper for the dump
+        private static string GetItemName(int unifiedIndex)
+        {
+            if (unifiedIndex < ItemCatalog.itemCount)
+                return Language.GetString(ItemCatalog.GetItemDef((ItemIndex)unifiedIndex)?.nameToken ?? "Unknown Item");
+            return Language.GetString(EquipmentCatalog.GetEquipmentDef((EquipmentIndex)(unifiedIndex - ItemCatalog.itemCount))?.nameToken ?? "Unknown Equip");
         }
     }
 }

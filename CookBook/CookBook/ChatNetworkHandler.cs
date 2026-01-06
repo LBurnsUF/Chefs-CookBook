@@ -201,13 +201,13 @@ namespace CookBook
                     if (cmd == "ABORT")
                     {
                         _log.LogDebug($"[Net In] Global Abort received from Sender {senderID}");
-                        CraftingObjectiveTracker.ClearObjectivesFromSender(senderID);
+                        ObjectiveTracker.ClearObjectivesFromSender(senderID);
                         return;
                     }
 
                     if (cmd == "SUCCESS")
                     {
-                        if (int.TryParse(parts[3], out int itemIdx)) CraftingObjectiveTracker.ClearSpecificRequest(senderID, itemIdx);
+                        if (int.TryParse(parts[3], out int itemIdx)) ObjectiveTracker.ClearSpecificRequest(senderID, itemIdx);
                         return;
                     }
 

@@ -1,6 +1,7 @@
 ﻿using BepInEx.Logging;
 using RoR2;
 using RoR2.UI;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -125,7 +126,7 @@ namespace CookBook
 
             _currentController = controller;
             if (_cookbookRoot != null) return;
-            var craftingPanel = Object.FindObjectOfType<CraftingPanel>();
+            var craftingPanel = UnityEngine.Object.FindObjectOfType<CraftingPanel>();
 
             if (!craftingPanel) return;
 
@@ -950,23 +951,22 @@ namespace CookBook
             {
                 var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
 
-                foreach (var ingredient in chain.DroneCostSparse)
+                foreach (var requirement in chain.DroneCostSparse)
                 {
-                    DroneCandidate candidate = InventoryTracker.GetScrapCandidate(ingredient.UnifiedIndex);
-
-                    if (candidate.DroneIdx != DroneIndex.None)
+                    if (requirement.DroneIdx != DroneIndex.None)
                     {
-                        Sprite droneSprite = GetDroneIcon(candidate.DroneIdx);
+                        Sprite droneSprite = GetDroneIcon(requirement.DroneIdx);
                         if (droneSprite != null)
                         {
-                            bool isAlliedDrone = candidate.Owner != null && candidate.Owner != localUser;
+                            bool isAlliedDrone = requirement.Owner != null && requirement.Owner != localUser;
                             GameObject template = isAlliedDrone ? _tradeSlotTemplate : _droneSlotTemplate;
 
-                            InstantiateSlot(template, runtime.VisualRect, droneSprite, ingredient.Count);
+                            InstantiateSlot(template, runtime.VisualRect, droneSprite, requirement.Count);
                         }
                     }
                 }
             }
+
             return pathRowGO;
         }
 
@@ -2404,7 +2404,7 @@ namespace CookBook
 
         private static float GetPixelCorrectThickness(float desiredPixels)
         {
-            Canvas rootCanvas = _cookbookRoot ? _cookbookRoot.GetComponentInParent<Canvas>() : Object.FindObjectOfType<Canvas>();
+            Canvas rootCanvas = _cookbookRoot ? _cookbookRoot.GetComponentInParent<Canvas>() : UnityEngine.Object.FindObjectOfType<Canvas>();
 
             if (rootCanvas != null)
             {
@@ -2420,5 +2420,7 @@ namespace CookBook
             public CraftableEntry Entry;
             public GameObject RowGO;
         }
+
+
     }
 }
