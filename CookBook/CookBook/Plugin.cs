@@ -10,7 +10,7 @@ using static CookBook.TierManager;
 namespace CookBook
 {
     [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
-
+    [BepInDependency("rainorshine.CleanChef", BepInDependency.DependencyFlags.SoftDependency)]
     public class CookBook : BaseUnityPlugin
     {
         public const string PluginGUID = PluginAuthor + "." + PluginName;
@@ -40,7 +40,12 @@ namespace CookBook
         public static bool IsDroneScrappingEnabled => ConsiderDrones.Value;
         public static bool ShouldBlockCorrupted => PreventCorruptedCrafting.Value;
         public static bool isDebugMode => DebugMode.Value;
-
+        private static bool _cleanerChefHaltEnabled;
+        private static bool _cleanerChefHooked;
+        private static Delegate _cleanerChefHandler;
+        private static Type _cleanerChefApiType;
+        private static System.Reflection.EventInfo _haltChangedEvent;
+        private static System.Reflection.PropertyInfo _haltEnabledProp;
 
         public void Awake()
         {
@@ -115,6 +120,14 @@ namespace CookBook
                 "When enabled, the console will show detailed recipe chain calculations and execution dumps."
             );
 
+            if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("rainorshine.CleanChef"))
+            {
+                if (!TryHookCleanerChefReflection())
+                {
+                    Log.LogWarning("CookBook: CleanerChef detected but API is missing/outdated. Skipping interop.");
+                }
+            }
+
             TierManager.Init(Log);
             RecipeProvider.Init(Log); // Parse all chef recipe rules
             StateController.Init(Log); // Initialize chef/state logic
@@ -124,7 +137,7 @@ namespace CookBook
             ChatNetworkHandler.Init(Log);
             RegisterAssets.Init();
             // VanillaCraftingTrace.Init(Log);
-            //RecipeTrackerUI.Init(Log);
+            // RecipeTrackerUI.Init(Log);
 
             ItemCatalog.availability.CallWhenAvailable(() =>
             {
@@ -169,6 +182,7 @@ namespace CookBook
                 }
             });
 
+            PreventCorruptedCrafting.SettingChanged += OnPreventCorruptedCraftingChanged;
             ConsiderDrones.SettingChanged += InventoryTracker.OnConsiderDronesChanged;
             ShowCorruptedResults.SettingChanged += StateController.OnShowCorruptedResultsChanged;
             MaxDepth.SettingChanged += StateController.OnMaxDepthChanged;
@@ -183,12 +197,34 @@ namespace CookBook
 
         private void OnDestroy()
         {
-            // unsubscribe from settings changes
             foreach (var tierEntry in TierPriorities.Values)
             {
                 if (tierEntry != null) tierEntry.SettingChanged -= TierManager.OnTierPriorityChanged;
             }
 
+            try
+            {
+                if (_cleanerChefHooked && _haltChangedEvent != null && _cleanerChefHandler != null)
+                {
+                    _haltChangedEvent.RemoveEventHandler(null, _cleanerChefHandler);
+                }
+            }
+            catch (Exception e)
+            {
+                Log.LogWarning($"CookBook: Failed to unhook CleanerChef interop: {e.GetType().Name}: {e.Message}");
+            }
+            finally
+            {
+                _cleanerChefHooked = false;
+                _cleanerChefHandler = null;
+                _cleanerChefApiType = null;
+                _haltChangedEvent = null;
+                _haltEnabledProp = null;
+                _cleanerChefHaltEnabled = false;
+            }
+
+
+            PreventCorruptedCrafting.SettingChanged -= OnPreventCorruptedCraftingChanged;
             ShowCorruptedResults.SettingChanged -= StateController.OnShowCorruptedResultsChanged;
             MaxDepth.SettingChanged -= StateController.OnMaxDepthChanged;
             ConsiderDrones.SettingChanged -= InventoryTracker.OnConsiderDronesChanged;
@@ -207,6 +243,65 @@ namespace CookBook
             DialogueHooks.Shutdown();
             CraftUI.Shutdown();
         }
+
+        private static void OnCleanerChefHaltChanged(bool haltEnabled)
+        {
+            _cleanerChefHaltEnabled = haltEnabled;
+
+            bool desired = !haltEnabled;
+
+            if (PreventCorruptedCrafting != null &&
+                PreventCorruptedCrafting.Value != desired)
+            {
+                PreventCorruptedCrafting.Value = desired;
+                DebugLog.Trace(Log, haltEnabled ? "CookBook: PreventCorruptedCrafting disabled (CleanerChef enabled)." : "CookBook: PreventCorruptedCrafting re-enabled (CleanerChef disabled).");
+            }
+        }
+
+        private static void OnPreventCorruptedCraftingChanged(object sender, EventArgs e)
+        {
+            if (_cleanerChefHaltEnabled && PreventCorruptedCrafting.Value)
+            {
+                PreventCorruptedCrafting.Value = false;
+                DebugLog.Trace(Log, "CookBook: PreventCorruptedCrafting locked off (CleanerChef enabled).");
+            }
+        }
+
+        private bool TryHookCleanerChefReflection()
+        {
+            if (_cleanerChefHooked) return true;
+
+            try
+            {
+                var info = BepInEx.Bootstrap.Chainloader.PluginInfos["rainorshine.CleanChef"];
+                var asm = info.Instance.GetType().Assembly;
+
+                _cleanerChefApiType = asm.GetType("CleanerChef.CleanerChefAPI", throwOnError: false);
+                if (_cleanerChefApiType == null) return false;
+
+                _haltChangedEvent = _cleanerChefApiType.GetEvent("HaltCorruptionChanged");
+                _haltEnabledProp = _cleanerChefApiType.GetProperty("HaltCorruptionEnabled");
+
+                if (_haltChangedEvent == null || _haltEnabledProp == null) return false;
+
+                Action<bool> handler = OnCleanerChefHaltChanged;
+                _cleanerChefHandler = Delegate.CreateDelegate(_haltChangedEvent.EventHandlerType, handler.Target, handler.Method);
+                _haltChangedEvent.AddEventHandler(null, _cleanerChefHandler);
+
+                bool current = (bool)_haltEnabledProp.GetValue(null);
+                OnCleanerChefHaltChanged(current);
+
+                _cleanerChefHooked = true;
+                DebugLog.Trace(Log, "CookBook: CleanerChef interop hooked (reflection).");
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogWarning($"CookBook: CleanerChef interop failed; skipping. {e.GetType().Name}: {e.Message}");
+                return false;
+            }
+        }
+
     }
 
     internal static class DebugLog

@@ -13,10 +13,11 @@ Dates are listed in `MM/DD/YY` format.
 - Simplified InventoryTracker to only hook oninventorychangeglobal rather than both local and global
 - Reduced the complexity of the efficiency culling logic significantly. (tested with all items with quality mod 650 ms -> 370 ms)
 - Now only rebuilds craftables if the dirtied drone index actually contributed to chains
-- 
+- Completely rewrote the backend of the crafting handler, now follows vanilla semantics 1:1.
 ### Added
 - Added a toggle to visually display the voided item you will receive if you crafting an item you already own the void version of
 - added a toggle for debug mode to add some extra prints at the crafting execution stage so you can see how a craft chain looks step-by-step.
+- Added a simple integration with cleanerchef to turn off hiding corrupted recipes if cleanerchef is enabled.
 ---
 
 ## v1.2.9 — 1/2/26

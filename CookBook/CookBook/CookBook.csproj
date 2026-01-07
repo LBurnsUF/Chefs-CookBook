@@ -73,6 +73,10 @@
 			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\Unity.ResourceManager.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
+		<Reference Include="CleanerChef">
+			<HintPath>C:\Users\logan\Desktop\Personal Projects\LBurnsUF\CleanChef\Cleaner-Chef\CleanChef\bin\Release\netstandard2.1\CleanerChef.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
 	</ItemGroup>
 
 </Project>
