@@ -123,7 +123,7 @@ namespace CookBook
             CraftUI.Init(Log); // Initialize craft UI injection
             ChatNetworkHandler.Init(Log);
             RegisterAssets.Init();
-            VanillaCraftingTrace.Init(Log);
+            // VanillaCraftingTrace.Init(Log);
             //RecipeTrackerUI.Init(Log);
 
             ItemCatalog.availability.CallWhenAvailable(() =>
