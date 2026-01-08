@@ -1,66 +1,69 @@
 # Changelog
 Dates are listed in `MM/DD/YY` format.
 
-
 ---
 
-## v1.2.10 — 1/5/26
+## v1.2.10 — 1/7/26
 ### Fixed
-- Fixed drone list not updating after drone death
-- Drone tier is now properly factored into its itemweight calculation
+- Fixed drone list not updating after drone death.
+- Drone tier is now properly factored into its itemweight calculation.
 - Added many safety guards in state controller.
+- Fixed Mathematical Value Drift in the planner that caused deep-crafting paths to be culled as inefficient.
+- Fixed Signature Collisions by switching to a non-canceling additive hash.
 ### Changed
 - Simplified InventoryTracker to only hook oninventorychangeglobal rather than both local and global
-- Reduced the complexity of the efficiency culling logic significantly. (tested with all items with quality mod 650 ms -> 370 ms)
-- Now only rebuilds craftables if the dirtied drone index actually contributed to chains
+- Reduced the complexity of the efficiency culling logic minorly. Tested with all items + quality mod + 5 depth, 650 ms -> 570 ms.
+- Hardened crafting logic to protect deeper chains, now properly respects intermediate item surpluses.
+- Craftable rebuilds gated to only occur if the dirtied drone index actually contributed to chains.
 - Completely rewrote the backend of the crafting handler, now follows vanilla semantics 1:1.
 ### Added
 - Added a toggle to visually display the voided item you will receive if you crafting an item you already own the void version of
 - added a toggle for debug mode to add some extra prints at the crafting execution stage so you can see how a craft chain looks step-by-step.
 - Added a simple integration with cleanerchef to turn off hiding corrupted recipes if cleanerchef is enabled.
+
 ---
 
 ## v1.2.9 — 1/2/26
 ### Fixed
- - Hardened Stage transition logic as it was throwing exceptions due to abort trying to fire on a null craftingcontroller (oops)
+ - Hardened Stage transition logic as it was throwing exceptions due to abort trying to fire on a null craftingcontroller (oops).
 ### Added
- - Added cool little indicators for the category selection button (yippee!)
+ - Added cool little indicators for the category selection button (yippee!).
 
 ---
 
 ## v1.2.8 — 1/1/26
 ### Changed
- - Stage entry logic now checks for an existing craftingcontroller (ie a chef) rather than relying on stage transitions
+ - Stage entry logic now checks for an existing craftingcontroller (ie a chef) rather than relying on stage transitions.
 
 ---
 
 ## v1.2.7 — 1/1/26 🎉
 ### Changed (many optimizations)
-- Now uses a commutative hash to cheaply cull permutations EARLY
-- Added final pass in recipeprovider to validate and cull all recipes that are permutations of one another, as well as remove all malformed recipes (those that use uncraftable items)
-- Moved the logic from IsChainEfficient into IsCausallyLinked to cull chains early
-- Implemented Dominance Culling to kill chains early if a better path exists based on item weighting
-- Updated inventorytracker hook to only fire on real inventory changes (no longer fires from using equipment or gaining/losing temp items)
-- Figured out how to change the active equipment slot in a client-safe fashion, automatically happens before the craft is attempted (MUL-T included!)
+- Now uses a commutative hash to cheaply cull permutations EARLY.
+- Added final pass in recipeprovider to validate and cull all recipes that are permutations of one another, as well as remove all malformed recipes (those that use uncraftable items).
+- Moved the logic from IsChainEfficient into IsCausallyLinked to cull chains early.
+- Implemented Dominance Culling to kill chains early if a better path exists based on item weighting.
+- Updated inventorytracker hook to only fire on real inventory changes (no longer fires from using equipment or gaining/losing temp items).
+- Figured out how to change the active equipment slot in a client-safe fashion, automatically happens before the craft is attempted (MUL-T included!).
 ### Added
-- Added support for controlling where equipment recipe rows go in the tiermanager sorting
-- Added support for controlling the sort order by index
-- Added support for repeatedly executing a craft chain N times via a text box next to the final craft button
-- Added protection against crafting illegal items (if you own a voided item, blocks using the non-voided version in chains). Toggleable in settings
+- Added support for controlling where equipment recipe rows go in the tiermanager sorting.
+- Added support for controlling the sort order by index.
+- Added support for repeatedly executing a craft chain N times via a text box next to the final craft button.
+- Added protection against crafting illegal items (if you own a voided item, blocks using the non-voided version in chains). Toggleable in settings.
 
 ---
 
 ## v1.2.6 — 12/31/25
 ### Added
-- Added sorting support to craftUI to sort based on item type (visual only to avoid recomputation)
+- Added sorting support to craftUI to sort based on item type (visual only to avoid recomputation).
 
 ---
 
 ## v1.2.5 — 12/29/25
 ### Fixed
-- Added inter-client confirmation via networked commands so that non-modded users can still participate (it sends the objective in raw text via chat!)
-- Muted command audio to not play the annoying chat blip on send
-- Further optimized craftplanner backend
+- Added inter-client confirmation via networked commands so that non-modded users can still participate. It sends the objective in raw text via chat!
+- Muted command audio to not play the annoying chat blip on send.
+- Further optimized craftplanner backend.
 
 ---
 

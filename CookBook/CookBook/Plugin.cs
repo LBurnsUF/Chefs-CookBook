@@ -52,6 +52,25 @@ namespace CookBook
             Log = Logger;
             Log.LogInfo("CookBook: Awake()");
 
+            AbortKey = Config.Bind(
+                "General",
+                "AbortKey",
+                new KeyboardShortcut(KeyCode.LeftAlt),
+                "Key to hold to abort an active auto-crafting sequence."
+            );
+            ShowCorruptedResults = Config.Bind(
+                "General",
+                "Show Corrupted Results",
+                true,
+                "Display corrupted versions of craft results if corrupt version already owned."
+            );
+            DebugMode = Config.Bind<bool>(
+                "General",
+                "Enable Debug Mode",
+                false,
+                "When enabled, the console will show detailed logging of the crafting backend. Useful for debugging."
+            );
+
             AllowMultiplayerPooling = Config.Bind(
                 "Logic",
                 "Allow Multiplayer Pooling",
@@ -64,12 +83,6 @@ namespace CookBook
                 true,
                 "If enabled, the planner will include scrappable drones (potential scrap) in recipe calculations."
             );
-            AbortKey = Config.Bind(
-                "General",
-                "AbortKey",
-                new KeyboardShortcut(KeyCode.LeftAlt),
-                "Key to hold to abort an active auto-crafting sequence."
-            );
             MaxDepth = Config.Bind(
                 "Logic",
                 "Max Chain Depth",
@@ -81,12 +94,6 @@ namespace CookBook
                 "Prevent Corrupted Crafting",
                 true,
                 "If enabled, recipes for base items will be hidden/disabled if you hold their Void counterpart (e.g., hiding Ukulele recipes if you have Polylute)."
-            );
-            ShowCorruptedResults = Config.Bind(
-                "UI",
-                "Show Corrupted Results",
-                true,
-                "Display corrupted versions of craft results if corrupt version already owned."
             );
 
             ComputeThrottleMs = Config.Bind(
@@ -113,12 +120,7 @@ namespace CookBook
                 "FoodTier,NoTier,Equipment,Boss,Tier3,Tier2,Tier1,VoidTier3,VoidTier2,VoidTier1,Lunar",
                 "The CSV order of item tiers for sorting. Tiers earlier in the list appear higher in the UI."
             );
-            DebugMode = Config.Bind<bool>(
-                "Logging",
-                "Enable Debug Mode",
-                false,
-                "When enabled, the console will show detailed recipe chain calculations and execution dumps."
-            );
+
 
             if (BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey("rainorshine.CleanChef"))
             {
