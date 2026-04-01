@@ -66,7 +66,8 @@ Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook 
 
 ## Development Status
 
-This mod is under **active development**!
+**paused**!
+Will continue in the interim between semesters in a few weeks! 
 
 Planned features include:
 
