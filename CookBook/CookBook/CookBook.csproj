@@ -12,7 +12,18 @@
 
 	<ItemGroup>
 		<Compile Include="ChatNetworkHandler.cs" />
+		<Compile Include="ColorFaderRuntime.cs" />
+		<Compile Include="CookBookUIComponents.cs" />
 		<Compile Include="CraftingExecutionHandler.cs" />
+		<Compile Include="CraftUI.Catalog.cs" />
+		<Compile Include="CraftUI.Events.cs" />
+		<Compile Include="CraftUI.Instantiate.cs" />
+		<Compile Include="CraftUI.Layout.cs" />
+		<Compile Include="CraftUI.Lifecycle.cs" />
+		<Compile Include="CraftUI.Populate.cs" />
+		<Compile Include="CraftUI.State.cs" />
+		<Compile Include="CraftUI.Templates.cs" />
+		<Compile Include="CraftUI.Visual.cs" />
 		<Compile Include="ObjectiveTracker.cs" />
 		<Compile Include="CraftPlanner.cs" />
 		<Compile Include="CraftUI.cs" />

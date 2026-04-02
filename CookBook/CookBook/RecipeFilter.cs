@@ -6,8 +6,6 @@ using static CookBook.CraftPlanner;
 internal static class RecipeFilter
 {
     public enum RecipeFilterCategory { All, Damage, Healing, Utility }
-
-
     public static RecipeFilterCategory CurrentCategory = RecipeFilterCategory.All;
 
     private static readonly Dictionary<RecipeFilterCategory, ItemTag> CategoryToTag = new()

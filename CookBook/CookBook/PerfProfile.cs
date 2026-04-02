@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Threading;
 using BepInEx.Logging;
 
-
 namespace CookBook
 {
     public static partial class PerfProfile

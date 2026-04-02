@@ -216,7 +216,26 @@ namespace CookBook
 
                     yield return new WaitForEndOfFrame();
                     CraftUI.CloseCraftPanel(controller);
-                    yield return new WaitForSeconds(0.2f);
+
+                    // Wait for the server to release the prompt participant (SyncVar)
+                    // rather than a fixed delay, since network latency varies
+                    float releaseBudget = 3.0f;
+                    while (releaseBudget > 0f)
+                    {
+                        if (!prompt || prompt.currentParticipantMaster == null)
+                            break;
+                        releaseBudget -= Time.unscaledDeltaTime;
+                        yield return null;
+                    }
+
+                    if (prompt && prompt.currentParticipantMaster != null)
+                    {
+                        _log.LogWarning("[Execution] Timed out waiting for prompt participant release. Aborting chain.");
+                        Cleanup(closeUi: true);
+                        yield break;
+                    }
+
+                    yield return new WaitForSeconds(0.1f);
 
                     continue;
                 }

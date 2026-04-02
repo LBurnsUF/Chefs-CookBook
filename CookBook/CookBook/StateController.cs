@@ -10,7 +10,7 @@ namespace CookBook
 {
     internal static class StateController
     {
-        private static ManualLogSource _log;
+        internal static ManualLogSource _log;
         private static CraftPlanner _planner;
 
         private static bool _initialized = false;
@@ -310,15 +310,18 @@ namespace CookBook
 
         internal static void TryReleasePromptParticipant(CraftingController controller)
         {
-            if (!controller || !UnityEngine.Networking.NetworkClient.active) return;
+            if (!controller) { DebugLog.Trace(_log, "Release: controller null"); return; }
+            if (!UnityEngine.Networking.NetworkClient.active) { DebugLog.Trace(_log, "Release: NetworkClient inactive"); return; }
 
             var prompt = controller.GetComponent<NetworkUIPromptController>();
-            if (!prompt) return;
+            if (!prompt) { DebugLog.Trace(_log, "Release: prompt missing"); return; }
 
             var w = prompt.BeginMessageToServer();
-            if (w == null) return;
+            if (w == null) { DebugLog.Trace(_log, "Release: writer null"); return; }
+
             w.Write((byte)1);
             prompt.FinishMessageToServer(w);
+            DebugLog.Trace(_log, "Release: sent");
         }
 
         //-------------------------------- Craft Handling ----------------------------------
@@ -340,12 +343,12 @@ namespace CookBook
             }
         }
 
-        private class StateRunner : MonoBehaviour
+        internal class StateRunner : MonoBehaviour
         {
-            private float _abortTimer = 0f;
-            private const float ABORT_THRESHOLD = 0.6f;
+            internal float _abortTimer = 0f;
+            internal const float ABORT_THRESHOLD = 0.6f;
 
-            private void Update()
+            internal void Update()
             {
                 if (StateController.IsAutoCrafting)
                 {
@@ -430,7 +433,7 @@ namespace CookBook
             }
         }
 
-        private static void QueueThrottledCompute(InventorySnapshot snapshot, int[] changedIndices, int changedCount, bool forceRebuild)
+        internal static void QueueThrottledCompute(InventorySnapshot snapshot, int[] changedIndices, int changedCount, bool forceRebuild)
         {
             if (!_craftingHandler || !_ischefstage) return;
 
@@ -444,7 +447,7 @@ namespace CookBook
         }
 
         //--------------------------------------- Coroutines ---------------------------------------------
-        private static IEnumerator ThrottledComputeRoutine(InventorySnapshot snapshot, int[] changedIndices, int changedCount, int epoch, bool forceRebuild)
+        internal static IEnumerator ThrottledComputeRoutine(InventorySnapshot snapshot, int[] changedIndices, int changedCount, int epoch, bool forceRebuild)
         {
             yield return new WaitForSecondsRealtime(CookBook.ComputeThrottleMs.Value / 1000f);
             if (epoch != _computeEpoch)

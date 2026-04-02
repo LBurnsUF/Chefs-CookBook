@@ -46,7 +46,6 @@ namespace CookBook
         public static bool isDebugMode => DebugMode.Value;
         public static bool isLogCraftMode => DebugMode.Value;
 
-
         public void Awake()
         {
             Log = Logger;
@@ -105,7 +104,7 @@ namespace CookBook
             MaxBridgeItemsPerChain = Config.Bind(
                 "Performance",
                 "Max Bridged Dependencies Per Result",
-                50,
+                5,
                 "Maximum number of bridges between recipes within a single result, allows crafts to request intermediate items if it satisfies a later demand. Higher values yields a more complete search but increases compute time and memory usage."
             );
 

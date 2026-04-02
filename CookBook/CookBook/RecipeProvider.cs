@@ -211,7 +211,7 @@ namespace CookBook
 
                     if (b == -1)
                     {
-                        uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, a, 1, 0));
+                        uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, a, 2, 0));
                     }
                     else
                     {

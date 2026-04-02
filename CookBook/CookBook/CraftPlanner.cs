@@ -2128,7 +2128,7 @@ namespace CookBook
             public bool Equals(DroneKey other) => OwnerNetId == other.OwnerNetId && DroneIdx == other.DroneIdx;
             public override int GetHashCode() => unchecked(((int)OwnerNetId * 397) ^ DroneIdx);
         }
-        internal sealed class TradeRecipe : ChefRecipe
+        internal class TradeRecipe : ChefRecipe
         {
             public NetworkUser Donor;
             public int ItemUnifiedIndex;
@@ -2151,7 +2151,6 @@ namespace CookBook
                 }
             }
         }
-
         internal struct TradeRequirement
         {
             public NetworkUser Donor;
@@ -2166,7 +2165,7 @@ namespace CookBook
             public int TotalUpgradeCount;
             public int ScrapIndex;
         }
-        internal sealed class CraftableEntry
+        internal class CraftableEntry
         {
             public int ResultIndex;
             public int ResultCount;
@@ -2176,7 +2175,7 @@ namespace CookBook
             public ItemIndex ResultItem => IsItem ? (ItemIndex)ResultIndex : ItemIndex.None;
             public EquipmentIndex ResultEquipment => IsItem ? EquipmentIndex.None : (EquipmentIndex)(ResultIndex - ItemCatalog.itemCount);
         }
-        internal sealed class RecipeChain
+        internal class RecipeChain
         {
             internal RecipeChain Parent { get; }
             internal ChefRecipe LastStep { get; }

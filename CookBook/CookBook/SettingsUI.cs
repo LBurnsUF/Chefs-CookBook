@@ -42,7 +42,7 @@ namespace CookBook
             ModSettingsManager.AddOption(new IntSliderOption(CookBook.MaxBridgeItemsPerChain, new IntSliderConfig
             {
                 min = 1,
-                max = 100,
+                max = 10,
                 formatString = "{0}"
             }));
             ModSettingsManager.AddOption(new IntSliderOption(CookBook.ComputeThrottleMs, new IntSliderConfig
