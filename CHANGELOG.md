@@ -3,6 +3,21 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.3.1 - 4/2/26
+### Fixed
+- Fixed single-ingredient recipes softlocking the crafting station due to incorrect ingredient count (CountA=1 instead of 2).
+- Fixed NullReferenceException on game exit caused by accessing destroyed Unity objects during shutdown.
+- Fixed non-host multiplayer softlock by replacing a fixed 200ms delay with SyncVar polling (3s timeout) for NetworkUIPromptController participant release.
+- Removed stale `ConsolidatePhysLinq` profiling region.
+### Changed
+- Reverted bundling-oriented abstractions in ColorFaderRuntime and CookBookUIComponents back to direct fields.
+- Performance: Reduced worst-case CraftPlanner compute time by ~82% (400ms -> 70ms).
+	- Replaced O(D) linked-list walk in `GetNetSurplusFor` with O(1) cumulative dictionary lookup, built once per chain at construction time.
+	- Eliminated closure/delegate allocations in `IsRecipeAffordable` and `CalculateSplitCosts` by inlining the 2-ingredient iteration.
+- PerfProfile: Added per-region min/max exclusive tick tracking for spotting outlier calls.
+
+---
+
 ## v1.3.0 - 1/17/26
 ### Added
 - Added a border around the adjustable repeat quantity and category filter buttons in the CookBook due to a certain individual's complaints.

@@ -17,7 +17,6 @@ namespace CookBook
             ExpandTrades,
             CalculateSplitCosts,
             ResolveRequirement,
-            ConsolidatePhysLinq,
             IsChainDominated,
             NewChainAlloc,
             PhysConsolidateAlloc,
@@ -31,6 +30,8 @@ namespace CookBook
         private static long[] _incTicks = new long[(int)Region.Count];
         private static long[] _excTicks = new long[(int)Region.Count];
         private static int[] _calls = new int[(int)Region.Count];
+        private static long[] _maxExcTicks = new long[(int)Region.Count];
+        private static long[] _minExcTicks = new long[(int)Region.Count];
 
         private static long NowTicks() => Stopwatch.GetTimestamp();
 
@@ -39,6 +40,8 @@ namespace CookBook
             Array.Clear(_incTicks, 0, _incTicks.Length);
             Array.Clear(_excTicks, 0, _excTicks.Length);
             Array.Clear(_calls, 0, _calls.Length);
+            Array.Clear(_maxExcTicks, 0, _maxExcTicks.Length);
+            for (int i = 0; i < _minExcTicks.Length; i++) _minExcTicks[i] = long.MaxValue;
             _stack.Value?.Reset();
         }
 
@@ -103,9 +106,12 @@ namespace CookBook
                 long dt = NowTicks() - frame.T0;
 
                 int i = (int)frame.R;
+                long exc = dt - frame.ChildTicks;
                 _incTicks[i] += dt;
-                _excTicks[i] += (dt - frame.ChildTicks);
+                _excTicks[i] += exc;
                 _calls[i]++;
+                if (exc > _maxExcTicks[i]) _maxExcTicks[i] = exc;
+                if (exc < _minExcTicks[i]) _minExcTicks[i] = exc;
 
                 if (st.Depth > 0)
                 {
@@ -173,7 +179,12 @@ namespace CookBook
 
                 int calls = _calls[idx];
 
-                log.LogInfo($"[Perf] {(Region)idx,-20} inc={incMs,8:F2}ms ({pctInc,6:F2}%)  exc={excMs,8:F2}ms ({pctExc,6:F2}%)  calls={calls}");
+                long minRaw = _minExcTicks[idx];
+                long maxRaw = _maxExcTicks[idx];
+                double minMs = (minRaw == long.MaxValue) ? 0 : minRaw * invFreqMs;
+                double maxMs = maxRaw * invFreqMs;
+
+                log.LogInfo($"[Perf] {(Region)idx,-20} inc={incMs,8:F2}ms ({pctInc,6:F2}%)  exc={excMs,8:F2}ms ({pctExc,6:F2}%)  calls={calls}  min={minMs:F4}ms  max={maxMs:F4}ms");
             }
         }
 #else
