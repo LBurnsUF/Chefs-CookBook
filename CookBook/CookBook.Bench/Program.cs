@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using BepInEx.Logging;
 using RoR2;
+using UnityEngine.Networking;
 
 namespace CookBook.Bench
 {
@@ -57,6 +58,11 @@ namespace CookBook.Bench
 
             Console.WriteLine($"Non-zero inventory slots: {nonZero} (every recipe ingredient gets {multiplier})");
 
+            var synth = BuildSyntheticData(data, stacks, ingredientSet, multiplier);
+
+            Console.WriteLine($"Drone items: {synth.DroneItemCount}, Drone candidates: {synth.TotalDroneCandidates}");
+            Console.WriteLine($"Allied players: {synth.AlliedStacks.Count}, Trades per ally: {synth.TradesPerAlly}");
+
             RecipeProvider.LoadFromBench(
                 data.MasterRecipes,
                 data.TotalDefCount,
@@ -80,30 +86,30 @@ namespace CookBook.Bench
                 Console.WriteLine($"{'=',-60}");
 
                 for (int d = 1; d <= snapshotDepth; d++)
-                    RunBench(data, stacks, physMask, d, multiplier);
+                    RunBench(data, stacks, physMask, d, multiplier, synth);
             }
             else
             {
                 int depth = depthArg > 0 ? depthArg : snapshotDepth;
-                RunBench(data, stacks, physMask, depth, multiplier);
+                RunBench(data, stacks, physMask, depth, multiplier, synth);
             }
         }
 
-        private static void RunBench(SnapshotLoader.BenchData data, int[] stacks, ulong[] physMask, int depth, int multiplier)
+        private static void RunBench(SnapshotLoader.BenchData data, int[] stacks, ulong[] physMask, int depth, int multiplier, SyntheticData synth)
         {
             var snapshot = new InventorySnapshot(
                 physical: stacks,
-                drone: data.DronePotential,
-                allCandidates: new Dictionary<int, List<DroneCandidate>>(),
+                drone: synth.DronePotential,
+                allCandidates: synth.ScrapCandidates,
                 corrupted: new HashSet<ItemIndex>(),
-                scrapperPresent: false,
-                poolingEnabled: false,
+                scrapperPresent: true,
+                poolingEnabled: true,
                 maxdepth: depth,
                 filteredRecipes: data.FilteredRecipes,
                 physMask: physMask,
-                droneMask: data.DroneMask,
-                alliedPhysicalStacks: new Dictionary<NetworkUser, int[]>(),
-                remainingTrades: new Dictionary<NetworkUser, int>()
+                droneMask: synth.DroneMask,
+                alliedPhysicalStacks: synth.AlliedStacks,
+                remainingTrades: synth.TradesRemaining
             );
 
             var log = new ManualLogSource("Bench");
@@ -145,43 +151,29 @@ namespace CookBook.Bench
             int candidates  = PerfProfile.CandidatesEvaluated;
             int created     = PerfProfile.ChainsCreated;
             int dominated   = PerfProfile.ChainsDominated;
-            int sigDuped    = PerfProfile.ChainsSigDuped;
             int domCalls    = PerfProfile.DominatesCallCount;
             int bucketScans = PerfProfile.DominatesBucketScans;
-            int shapeExact  = PerfProfile.ShapeHitExact;
-            int shapeBetter = PerfProfile.ShapeHitBetter;
-            int shapeWorse  = PerfProfile.ShapeHitWorse;
-            int shapeNew    = PerfProfile.ShapeMissNew;
             int evictions   = PerfProfile.FrontierEvictions;
             int uniqueRes   = PerfProfile.UniqueResultIndices;
 
             int totalChecked = dominated + created;
-            int shapeTotal   = shapeExact + shapeBetter + shapeWorse + shapeNew;
 
             Console.WriteLine("\n--- Algorithm Counters ---");
             Console.WriteLine($"  BFS nodes popped:      {nodes}");
             Console.WriteLine($"  Candidates evaluated:  {candidates}");
             Console.WriteLine($"  Chains created:        {created}");
             Console.WriteLine($"  Chains dominated:      {dominated}");
-            Console.WriteLine($"  Chains sig-duped:      {sigDuped}");
             Console.WriteLine($"  Unique result items:   {uniqueRes}");
 
             Console.WriteLine("\n--- Dominance Engine ---");
-            Console.WriteLine($"  IsChainDominated calls:  {shapeTotal}");
+            Console.WriteLine($"  IsChainDominated calls:  {totalChecked}");
             Console.WriteLine($"  Dominates() pair checks: {domCalls}");
             Console.WriteLine($"  Bucket entries scanned:  {bucketScans}");
             Console.WriteLine($"  Frontier evictions:      {evictions}");
 
-            Console.WriteLine("\n--- Shape Key Analysis ---");
-            Console.WriteLine($"  Exact hit (early prune):  {shapeExact,6}  ({Pct(shapeExact, shapeTotal)})");
-            Console.WriteLine($"  Better (replaced old):    {shapeBetter,6}  ({Pct(shapeBetter, shapeTotal)})");
-            Console.WriteLine($"  Worse (kept existing):    {shapeWorse,6}  ({Pct(shapeWorse, shapeTotal)})");
-            Console.WriteLine($"  Miss (new shape):         {shapeNew,6}  ({Pct(shapeNew, shapeTotal)})");
-
             Console.WriteLine("\n--- Derived ---");
             Console.WriteLine($"  Rejection rate:                {Pct(dominated, totalChecked)}  (dominated / total chains checked)");
-            Console.WriteLine($"  Avg bucket scans per dom call: {Ratio(bucketScans, shapeTotal)}  (pair comparisons per IsChainDominated)");
-            Console.WriteLine($"  Shape early-exit rate:         {Pct(shapeExact, shapeTotal)}  (calls avoided bucket scan entirely)");
+            Console.WriteLine($"  Avg bucket scans per dom call: {Ratio(bucketScans, totalChecked)}  (pair comparisons per IsChainDominated)");
             Console.WriteLine($"  Candidates per BFS node:       {Ratio(candidates, nodes)}");
             Console.WriteLine($"  Chains per candidate:          {Ratio(created, candidates)}");
         }
@@ -191,6 +183,98 @@ namespace CookBook.Bench
 
         private static string Ratio(int num, int den)
             => den > 0 ? $"{(double)num / den:F1}" : "N/A";
+
+        internal class SyntheticData
+        {
+            public int[] DronePotential;
+            public ulong[] DroneMask;
+            public Dictionary<int, List<DroneCandidate>> ScrapCandidates;
+            public Dictionary<NetworkUser, int[]> AlliedStacks;
+            public Dictionary<NetworkUser, int> TradesRemaining;
+            public int DroneItemCount;
+            public int TotalDroneCandidates;
+            public int TradesPerAlly;
+        }
+
+        private static SyntheticData BuildSyntheticData(SnapshotLoader.BenchData data, int[] stacks, HashSet<int> ingredientSet, int multiplier)
+        {
+            int totalDef = data.TotalDefCount;
+            int maskWords = data.MaskWords;
+
+            var dronePotential = new int[totalDef];
+            var scrapCandidates = new Dictionary<int, List<DroneCandidate>>();
+            ulong nextMinionId = 1000;
+            int droneItemCount = 0;
+            int totalDroneCandidates = 0;
+
+            var ingredientList = new List<int>(ingredientSet);
+            ingredientList.Sort();
+
+            for (int i = 0; i < ingredientList.Count; i++)
+            {
+                int idx = ingredientList[i];
+                if (i % 3 != 0) continue;
+
+                int potential = Math.Max(1, multiplier / 2);
+                dronePotential[idx] = potential;
+                droneItemCount++;
+
+                int candidateCount = 1 + (i % 4);
+                var candidates = new List<DroneCandidate>(candidateCount);
+                for (int c = 0; c < candidateCount; c++)
+                {
+                    candidates.Add(new DroneCandidate
+                    {
+                        Owner = null,
+                        DroneIdx = (DroneIndex)(c % 5),
+                        UpgradeCount = 1 + (c % 3),
+                        MinionMasterNetId = nextMinionId++
+                    });
+                    totalDroneCandidates++;
+                }
+                scrapCandidates[idx] = candidates;
+            }
+
+            var droneMask = new ulong[maskWords];
+            for (int i = 0; i < totalDef; i++)
+            {
+                if (dronePotential[i] > 0)
+                    droneMask[i >> 6] |= (1UL << (i & 63));
+            }
+
+            int allyCount = 3;
+            int tradesPerAlly = 5;
+            var alliedStacks = new Dictionary<NetworkUser, int[]>();
+            var tradesRemaining = new Dictionary<NetworkUser, int>();
+
+            for (int a = 0; a < allyCount; a++)
+            {
+                var ally = new NetworkUser { netId = new NetworkInstanceId((uint)(900 + a)) };
+                var allyInv = new int[totalDef];
+
+                for (int i = 0; i < ingredientList.Count; i++)
+                {
+                    int idx = ingredientList[i];
+                    if ((i + a) % 4 == 0)
+                        allyInv[idx] = Math.Max(1, multiplier);
+                }
+
+                alliedStacks[ally] = allyInv;
+                tradesRemaining[ally] = tradesPerAlly;
+            }
+
+            return new SyntheticData
+            {
+                DronePotential = dronePotential,
+                DroneMask = droneMask,
+                ScrapCandidates = scrapCandidates,
+                AlliedStacks = alliedStacks,
+                TradesRemaining = tradesRemaining,
+                DroneItemCount = droneItemCount,
+                TotalDroneCandidates = totalDroneCandidates,
+                TradesPerAlly = tradesPerAlly
+            };
+        }
 
         private static void SetupGameStubs(SnapshotLoader.BenchData data)
         {

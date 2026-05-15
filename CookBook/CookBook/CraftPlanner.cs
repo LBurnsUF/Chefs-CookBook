@@ -26,9 +26,7 @@ namespace CookBook
         private ulong[] _haveMaskBuffer;
         private Dictionary<int, CraftableEntry> _entryCache = new();
 
-        private readonly Dictionary<long, Dictionary<CostShapeKey, BestCostRecord>> _bestByOutputAndShape = new();
-        private readonly Dictionary<long, Dictionary<int, List<BestCostRecord>>> _frontierBucketsByOutput = new();
-        private readonly Dictionary<int, HashSet<ulong>> _seenChainSigByResult = new();
+        private readonly Dictionary<long, List<BestCostRecord>> _frontier = new();
 
         private int[] _candidateMark;
         private int _candidateStamp = 1;
@@ -65,13 +63,9 @@ namespace CookBook
         private int[] _defKeys;
         private int _defCount;
 
-        private int _pMaxLen;
-        private int _dMaxLen;
-        private int _tMaxLen;
 
         private readonly ulong[] _surplusMaskScratch;
 
-        private readonly List<int> _bucketKeysScratch;
 
         private readonly List<DroneRequirement> _tempDroneReqList = new();
 
@@ -115,13 +109,9 @@ namespace CookBook
             _posKeys = new int[maxKeys];
             _defKeys = new int[maxKeys];
 
-            _pMaxLen = 2 * _maxDepth;
-            _dMaxLen = 2 * _maxDepth;
-            _tMaxLen = _maxDepth;
 
             _surplusMaskScratch = new ulong[_maskWords];
 
-            _bucketKeysScratch = new List<int>(MaxBucketKeysCapacity(_maxDepth));
         }
 
         private void BuildRecipeIndex(IReadOnlyList<ChefRecipe> recipes)
@@ -210,9 +200,7 @@ namespace CookBook
 
                 Array.Clear(_activeMasterRecipe, 0, _activeMasterRecipe.Length);
                 Array.Clear(_activeRecipeByMaster, 0, _activeRecipeByMaster.Length);
-                _bestByOutputAndShape.Clear();
-                _frontierBucketsByOutput.Clear();
-                _seenChainSigByResult.Clear();
+                _frontier.Clear();
 
                 for (int i = 0; i < recipes.Count; i++)
                 {
@@ -316,6 +304,8 @@ namespace CookBook
                     {
                         int layerSize = queue.Count;
                         if (layerSize == 0) break;
+
+                        CleanFrontier();
 
                         for (int i = 0; i < layerSize; i++)
                         {
@@ -729,7 +719,7 @@ namespace CookBook
         /// A dominates B if:
         /// For every phys key: A.count <= B.count && for every trade key: A.trades <= B.trades && for every drone scrap key: A.need <= B.need, && >=1 dimensions strictly smaller || B has extra nonzero keys not in A
         /// </summary>
-        private bool IsChainDominated(
+        private bool IsChainDominated(
             int resultIdx,
             int resultCount,
             Ingredient[] physSortedByIdx,
@@ -737,139 +727,34 @@ namespace CookBook
             TradeRequirement[] tradesSorted,
             out (int scrapIdx, int need)[] droneNeedsSorted)
         {
-            long outKey = OutputKey(resultIdx, resultCount);
-
             physSortedByIdx ??= Array.Empty<Ingredient>();
             tradesSorted ??= Array.Empty<TradeRequirement>();
-
             droneNeedsSorted = CollapseDroneNeedsByScrapIndex(droneReqs);
 
-            // ---------- exact-keyset ----------
-            var shape = BuildCostShapeKey_FromCosts(physSortedByIdx, droneNeedsSorted, tradesSorted);
+            long outKey = OutputKey(resultIdx, resultCount);
 
-            if (!_bestByOutputAndShape.TryGetValue(outKey, out var byShape))
+            if (!_frontier.TryGetValue(outKey, out var entries))
             {
-                byShape = new Dictionary<CostShapeKey, BestCostRecord>();
-                _bestByOutputAndShape[outKey] = byShape;
+                entries = new List<BestCostRecord>(4);
+                _frontier[outKey] = entries;
             }
 
-            if (byShape.TryGetValue(shape, out var bestSameShape))
+            for (int i = 0; i < entries.Count; i++)
             {
-                if (IsStrictlyWorse(bestSameShape.Phys, bestSameShape.Drone, bestSameShape.Trades,
-                          physSortedByIdx, droneNeedsSorted, tradesSorted))
-                    {
+                var ex = entries[i];
 #if COOKBOOK_PERF
-                        PerfProfile.ShapeHitExact++;
+                PerfProfile.DominatesBucketScans++;
 #endif
-                        return true;
-                    }
-
-                if (IsStrictlyWorse(physSortedByIdx, droneNeedsSorted, tradesSorted,
-                          bestSameShape.Phys, bestSameShape.Drone, bestSameShape.Trades))
-                    {
-#if COOKBOOK_PERF
-                        PerfProfile.ShapeHitBetter++;
-#endif
-                        byShape[shape] = new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted);
-                    }
-#if COOKBOOK_PERF
-                else
+                if (Dominates(ex.Phys, ex.Drone, ex.Trades, physSortedByIdx, droneNeedsSorted, tradesSorted, weakOnly: true))
                 {
-                    PerfProfile.ShapeHitWorse++;
-                }
-#endif
-            }
-            else
-            {
 #if COOKBOOK_PERF
-                PerfProfile.ShapeMissNew++;
+                    PerfProfile.ChainsDominated++;
 #endif
-                byShape[shape] = new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted);
-            }
-
-            // ---------- cross-keyset ----------
-            if (!_frontierBucketsByOutput.TryGetValue(outKey, out var buckets))
-            {
-                buckets = new Dictionary<int, List<BestCostRecord>>();
-                _frontierBucketsByOutput[outKey] = buckets;
-            }
-
-            int pLen = physSortedByIdx.Length;
-            int dLen = droneNeedsSorted.Length;
-            int tLen = tradesSorted.Length;
-
-            for (int bp = 0; bp <= pLen; bp++)
-            {
-                for (int bd = 0; bd <= dLen; bd++)
-                {
-                    for (int bt = 0; bt <= tLen; bt++)
-                    {
-                        int key = EncodeLens(bp, bd, bt);
-                        if (!buckets.TryGetValue(key, out var list) || list == null) continue;
-
-                        for (int i = 0; i < list.Count; i++)
-                        {
-                            var ex = list[i];
-#if COOKBOOK_PERF
-                            PerfProfile.DominatesBucketScans++;
-#endif
-                            if (Dominates(ex.Phys, ex.Drone, ex.Trades, physSortedByIdx, droneNeedsSorted, tradesSorted))
-                            {
-#if COOKBOOK_PERF
-                                PerfProfile.ChainsDominated++;
-#endif
-                                return true;
-                            }
-                        }
-                    }
+                    return true;
                 }
             }
 
-            _bucketKeysScratch.Clear();
-
-            for (int bp = pLen; bp <= _pMaxLen; bp++)
-            {
-                for (int bd = dLen; bd <= _dMaxLen; bd++)
-                {
-                    for (int bt = tLen; bt <= _tMaxLen; bt++)
-                    {
-                        int key = EncodeLens(bp, bd, bt);
-                        if (!buckets.TryGetValue(key, out var list) || list == null) continue;
-
-                        for (int i = list.Count - 1; i >= 0; i--)
-                        {
-                            var ex = list[i];
-#if COOKBOOK_PERF
-                            PerfProfile.DominatesBucketScans++;
-#endif
-                            if (Dominates(physSortedByIdx, droneNeedsSorted, tradesSorted, ex.Phys, ex.Drone, ex.Trades))
-                            {
-#if COOKBOOK_PERF
-                                PerfProfile.FrontierEvictions++;
-#endif
-                                list.RemoveAt(i);
-                            }
-                        }
-
-                        if (list.Count == 0)
-                            _bucketKeysScratch.Add(key);
-                    }
-                }
-            }
-
-
-            for (int i = 0; i < _bucketKeysScratch.Count; i++)
-                buckets.Remove(_bucketKeysScratch[i]);
-
-            // Insert candidate
-            int myBucket = EncodeLens(pLen, dLen, tLen);
-            if (!buckets.TryGetValue(myBucket, out var myList))
-            {
-                myList = new List<BestCostRecord>(4);
-                buckets[myBucket] = myList;
-            }
-
-            myList.Add(new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted));
+            entries.Add(new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted));
             return false;
         }
 
@@ -880,144 +765,62 @@ namespace CookBook
             (int scrapIdx, int need)[] droneNeedsSorted,
             TradeRequirement[] tradesSorted)
         {
-            long outKey = OutputKey(resultIdx, resultCount);
-
             physSortedByIdx ??= Array.Empty<Ingredient>();
             tradesSorted ??= Array.Empty<TradeRequirement>();
 
-            // ---------- exact-keyset ----------
-            var shape = BuildCostShapeKey_FromCosts(physSortedByIdx, droneNeedsSorted, tradesSorted);
+            long outKey = OutputKey(resultIdx, resultCount);
 
-            if (!_bestByOutputAndShape.TryGetValue(outKey, out var byShape))
+            if (!_frontier.TryGetValue(outKey, out var entries))
             {
-                byShape = new Dictionary<CostShapeKey, BestCostRecord>();
-                _bestByOutputAndShape[outKey] = byShape;
+                entries = new List<BestCostRecord>(4);
+                _frontier[outKey] = entries;
             }
 
-            if (byShape.TryGetValue(shape, out var bestSameShape))
+            for (int i = 0; i < entries.Count; i++)
             {
-                if (IsStrictlyWorse(bestSameShape.Phys, bestSameShape.Drone, bestSameShape.Trades,
-                          physSortedByIdx, droneNeedsSorted, tradesSorted))
-                    {
+                var ex = entries[i];
 #if COOKBOOK_PERF
-                        PerfProfile.ShapeHitExact++;
+                PerfProfile.DominatesBucketScans++;
 #endif
-                        return true;
-                    }
-
-                if (IsStrictlyWorse(physSortedByIdx, droneNeedsSorted, tradesSorted,
-                          bestSameShape.Phys, bestSameShape.Drone, bestSameShape.Trades))
-                    {
-#if COOKBOOK_PERF
-                        PerfProfile.ShapeHitBetter++;
-#endif
-                        byShape[shape] = new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted);
-                    }
-#if COOKBOOK_PERF
-                else
+                if (Dominates(ex.Phys, ex.Drone, ex.Trades, physSortedByIdx, droneNeedsSorted, tradesSorted, weakOnly: true))
                 {
-                    PerfProfile.ShapeHitWorse++;
-                }
-#endif
-            }
-            else
-            {
 #if COOKBOOK_PERF
-                PerfProfile.ShapeMissNew++;
+                    PerfProfile.ChainsDominated++;
 #endif
-                byShape[shape] = new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted);
-            }
-
-            // ---------- cross-keyset ----------
-            if (!_frontierBucketsByOutput.TryGetValue(outKey, out var buckets))
-            {
-                buckets = new Dictionary<int, List<BestCostRecord>>();
-                _frontierBucketsByOutput[outKey] = buckets;
-            }
-
-            int pLen = physSortedByIdx.Length;
-            int dLen = droneNeedsSorted.Length;
-            int tLen = tradesSorted.Length;
-
-            for (int bp = 0; bp <= pLen; bp++)
-            {
-                for (int bd = 0; bd <= dLen; bd++)
-                {
-                    for (int bt = 0; bt <= tLen; bt++)
-                    {
-                        int key = EncodeLens(bp, bd, bt);
-                        if (!buckets.TryGetValue(key, out var list) || list == null) continue;
-
-                        for (int i = 0; i < list.Count; i++)
-                        {
-                            var ex = list[i];
-#if COOKBOOK_PERF
-                            PerfProfile.DominatesBucketScans++;
-#endif
-                            if (Dominates(ex.Phys, ex.Drone, ex.Trades, physSortedByIdx, droneNeedsSorted, tradesSorted))
-                            {
-#if COOKBOOK_PERF
-                                PerfProfile.ChainsDominated++;
-#endif
-                                return true;
-                            }
-                        }
-                    }
+                    return true;
                 }
             }
 
-            _bucketKeysScratch.Clear();
-
-            for (int bp = pLen; bp <= _pMaxLen; bp++)
-            {
-                for (int bd = dLen; bd <= _dMaxLen; bd++)
-                {
-                    for (int bt = tLen; bt <= _tMaxLen; bt++)
-                    {
-                        int key = EncodeLens(bp, bd, bt);
-                        if (!buckets.TryGetValue(key, out var list) || list == null) continue;
-
-                        for (int i = list.Count - 1; i >= 0; i--)
-                        {
-                            var ex = list[i];
-#if COOKBOOK_PERF
-                            PerfProfile.DominatesBucketScans++;
-#endif
-                            if (Dominates(physSortedByIdx, droneNeedsSorted, tradesSorted, ex.Phys, ex.Drone, ex.Trades))
-                            {
-#if COOKBOOK_PERF
-                                PerfProfile.FrontierEvictions++;
-#endif
-                                list.RemoveAt(i);
-                            }
-                        }
-
-                        if (list.Count == 0)
-                            _bucketKeysScratch.Add(key);
-                    }
-                }
-            }
-
-
-            for (int i = 0; i < _bucketKeysScratch.Count; i++)
-                buckets.Remove(_bucketKeysScratch[i]);
-
-            // Insert candidate
-            int myBucket = EncodeLens(pLen, dLen, tLen);
-            if (!buckets.TryGetValue(myBucket, out var myList))
-            {
-                myList = new List<BestCostRecord>(4);
-                buckets[myBucket] = myList;
-            }
-
-            myList.Add(new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted));
+            entries.Add(new BestCostRecord(physSortedByIdx, droneNeedsSorted, tradesSorted));
             return false;
         }
 
-        private static int EncodeLens(int physLen, int droneLen, int tradeLen)
+        private void CleanFrontier()
         {
-            return (physLen & 1023) | ((droneLen & 1023) << 10) | ((tradeLen & 1023) << 20);
+            foreach (var kvp in _frontier)
+            {
+                var entries = kvp.Value;
+                for (int i = entries.Count - 1; i >= 0; i--)
+                {
+                    var candidate = entries[i];
+                    for (int j = 0; j < entries.Count; j++)
+                    {
+                        if (i == j) continue;
+                        if (Dominates(entries[j].Phys, entries[j].Drone, entries[j].Trades,
+                                      candidate.Phys, candidate.Drone, candidate.Trades))
+                        {
+#if COOKBOOK_PERF
+                            PerfProfile.FrontierEvictions++;
+#endif
+                            entries.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
+            }
         }
+
+
 
         private static bool IsStrictlyWorse(
             Ingredient[] bestPhys, (int scrapIdx, int need)[] bestDrone, TradeRequirement[] bestTrades,
@@ -1150,7 +953,7 @@ namespace CookBook
 
         private static bool Dominates(
           Ingredient[] aPhys, (int scrapIdx, int need)[] aDrone, TradeRequirement[] aTrades,
-          Ingredient[] bPhys, (int scrapIdx, int need)[] bDrone, TradeRequirement[] bTrades)
+          Ingredient[] bPhys, (int scrapIdx, int need)[] bDrone, TradeRequirement[] bTrades, bool weakOnly = false)
         {
 #if COOKBOOK_PERF
             PerfProfile.DominatesCallCount++;
@@ -1168,7 +971,7 @@ namespace CookBook
             if (!DominatesDrone(aDrone, bDrone, ref strict)) return false;
             if (!DominatesTrades(aTrades, bTrades, ref strict)) return false;
 
-            return strict;
+            return weakOnly || strict;
         }
 
         private static bool DominatesPhys(Ingredient[] a, Ingredient[] b, ref bool strict)
@@ -1285,63 +1088,6 @@ namespace CookBook
                 }
             }
             return true;
-        }
-
-        private static int Fold64To32(long x)
-        {
-            unchecked { return (int)x ^ (int)(x >> 32); }
-        }
-
-        private static CostShapeKey BuildCostShapeKey_FromCosts(
-            Ingredient[] physSortedByIdx,
-            (int scrapIdx, int need)[] droneNeedsSorted,
-            TradeRequirement[] tradesSorted)
-        {
-            unchecked
-            {
-                int h1 = 17;
-                int h2 = 23;
-
-                int pl = physSortedByIdx?.Length ?? 0;
-                for (int i = 0; i < pl; i++)
-                {
-                    if (physSortedByIdx[i].Count <= 0) continue;
-
-                    int k = physSortedByIdx[i].UnifiedIndex;
-
-                    h1 = (h1 * 31) ^ k;
-                    h2 = (h2 * 1315423911) ^ k;
-                }
-
-                int dl = droneNeedsSorted?.Length ?? 0;
-                for (int i = 0; i < dl; i++)
-                {
-                    int k = droneNeedsSorted[i].scrapIdx;
-
-                    h1 = (h1 * 31) ^ k;
-                    int mix = unchecked(k + (int)0x9E3779B9);
-                    h2 = (h2 * 1315423911) ^ mix;
-                }
-
-                int tl = tradesSorted?.Length ?? 0;
-                for (int i = 0; i < tl; i++)
-                {
-                    if (tradesSorted[i].TradesRequired <= 0) continue;
-
-                    int donor32 = Fold64To32(tradesSorted[i].Donor.netId.Value);
-
-                    int item = tradesSorted[i].UnifiedIndex;
-
-                    h1 = (h1 * 31) ^ donor32;
-                    h1 = (h1 * 31) ^ item;
-
-                    // Different combine path for h2
-                    h2 = (h2 * 1315423911) ^ donor32;
-                    h2 = (h2 * 1315423911) ^ item;
-                }
-
-                return new CostShapeKey(h1, h2, pl, dl, tl);
-            }
         }
 
         private static long OutputKey(int resultIdx, int resultCount)
@@ -1550,9 +1296,6 @@ namespace CookBook
 
                     var updatedTradeReqs = SortTradesCanonical(UpdateTradeRequirements(existingTradeReqs, donor, idx));
 
-                    ulong sig = HashCosts(chain.PhysicalCostSparse, collapsedDroneNeedsForChain, updatedTradeReqs);
-                    if (_seenChainSigByResult.TryGetValue(idx, out var seen) && seen.Contains(sig))
-                        continue;
 
                     bool dominated;
                     using (PerfProfile.Measure(Region.IsChainDominated))
@@ -1863,21 +1606,7 @@ namespace CookBook
             if (list.Count >= CookBook.ChainsLimit) return;
             if (IsChainInefficient(chain)) return;
 
-            if (!_seenChainSigByResult.TryGetValue(chain.ResultIndex, out var seen))
-            {
-                seen = new HashSet<ulong>();
-                _seenChainSigByResult[chain.ResultIndex] = seen;
-            }
-
             collapsedDroneNeeds ??= CollapseDroneNeedsByScrapIndex(chain.DroneCostSparse);
-
-            if (!seen.Add(HashCosts(chain.PhysicalCostSparse, collapsedDroneNeeds, chain.AlliedTradeSparse)))
-            {
-#if COOKBOOK_PERF
-                PerfProfile.ChainsSigDuped++;
-#endif
-                return;
-            }
 
             list.Add(chain);
             queue.Enqueue(chain);
@@ -1963,13 +1692,9 @@ namespace CookBook
             ResizeOrAlloc(ref _profileVals, newMaxKeys);
             ResizeOrAlloc(ref _posKeys, newMaxKeys);
             ResizeOrAlloc(ref _defKeys, newMaxKeys);
-            _bucketKeysScratch.Capacity = MaxBucketKeysCapacity(newDepth);
 
             _maxDepth = newDepth;
 
-            _pMaxLen = 2 * _maxDepth;
-            _dMaxLen = 2 * _maxDepth;
-            _tMaxLen = _maxDepth;
         }
 
         private static void ResizeOrAlloc<T>(ref T[] arr, int newLen)
@@ -1981,61 +1706,6 @@ namespace CookBook
         }
 
         // --------- Helpers ----------------
-        private static ulong HashCosts(
-            Ingredient[] phys,
-            (int scrapIdx, int need)[] droneNeeds,
-            TradeRequirement[] trades)
-        {
-            unchecked
-            {
-                // FNV-1a 64-bit
-                const ulong offset = 1469598103934665603UL;
-                const ulong prime = 1099511628211UL;
-
-                ulong h = offset;
-
-                phys ??= Array.Empty<Ingredient>();
-                for (int i = 0; i < phys.Length; i++)
-                {
-                    int idx = phys[i].UnifiedIndex;
-                    int cnt = phys[i].Count;
-                    if (cnt <= 0) continue;
-
-                    h ^= (uint)idx; h *= prime;
-                    h ^= (uint)cnt; h *= prime;
-                }
-
-                droneNeeds ??= Array.Empty<(int, int)>();
-                for (int i = 0; i < droneNeeds.Length; i++)
-                {
-                    h ^= (uint)droneNeeds[i].scrapIdx; h *= prime;
-                    h ^= (uint)droneNeeds[i].need; h *= prime;
-                }
-
-                trades ??= Array.Empty<TradeRequirement>();
-                for (int i = 0; i < trades.Length; i++)
-                {
-                    int cnt = trades[i].TradesRequired;
-                    if (cnt <= 0) continue;
-
-                    int donor32 = Fold64To32((trades[i].Donor ? trades[i].Donor.netId.Value : 0L));
-
-                    h ^= (uint)donor32; h *= prime;
-                    h ^= (uint)trades[i].UnifiedIndex; h *= prime;
-                    h ^= (uint)cnt; h *= prime;
-                }
-
-                return h;
-            }
-        }
-
-        private static int MaxBucketKeysCapacity(int maxDepth)
-        {
-            int pMax = 2 * maxDepth;
-            int dMax = 2 * maxDepth;
-            int tMax = maxDepth;
-            return (pMax + 1) * (dMax + 1) * (tMax + 1);
-        }
 
         private static TradeRequirement[] SortTradesCanonical(TradeRequirement[] trades)
         {
@@ -2194,32 +1864,6 @@ namespace CookBook
                 if (idx == I1) return V1;
                 if (idx == I2) return V2;
                 return 0;
-            }
-        }
-        internal readonly struct CostShapeKey : IEquatable<CostShapeKey>
-        {
-            public readonly int Hash1;
-            public readonly int Hash2;
-            public readonly int PhysLen;
-            public readonly int DroneLen;
-            public readonly int TradeLen;
-
-            public CostShapeKey(int hash1, int hash2, int physLen, int droneLen, int tradeLen)
-            {
-                Hash1 = hash1;
-                Hash2 = hash2;
-                PhysLen = physLen;
-                DroneLen = droneLen;
-                TradeLen = tradeLen;
-            }
-
-            public bool Equals(CostShapeKey other)
-              => Hash1 == other.Hash1 && Hash2 == other.Hash2
-              && PhysLen == other.PhysLen && DroneLen == other.DroneLen && TradeLen == other.TradeLen;
-
-            public override int GetHashCode()
-            {
-                unchecked { return (Hash1 * 397) ^ Hash2; }
             }
         }
         internal readonly struct BestCostRecord

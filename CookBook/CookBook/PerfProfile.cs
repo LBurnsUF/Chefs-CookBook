@@ -38,13 +38,8 @@ namespace CookBook
         public static int CandidatesEvaluated;
         public static int ChainsCreated;
         public static int ChainsDominated;
-        public static int ChainsSigDuped;
         public static int DominatesCallCount;
         public static int DominatesBucketScans;
-        public static int ShapeHitExact;
-        public static int ShapeMissNew;
-        public static int ShapeHitWorse;
-        public static int ShapeHitBetter;
         public static int FrontierEvictions;
         public static int UniqueResultIndices;
 
@@ -63,13 +58,8 @@ namespace CookBook
             CandidatesEvaluated = 0;
             ChainsCreated = 0;
             ChainsDominated = 0;
-            ChainsSigDuped = 0;
             DominatesCallCount = 0;
             DominatesBucketScans = 0;
-            ShapeHitExact = 0;
-            ShapeMissNew = 0;
-            ShapeHitWorse = 0;
-            ShapeHitBetter = 0;
             FrontierEvictions = 0;
             UniqueResultIndices = 0;
         }
