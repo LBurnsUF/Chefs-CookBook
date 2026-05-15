@@ -33,6 +33,21 @@ namespace CookBook
         private static long[] _maxExcTicks = new long[(int)Region.Count];
         private static long[] _minExcTicks = new long[(int)Region.Count];
 
+        // Algorithmic counters -- work volume, not time
+        public static int BfsNodesPopped;
+        public static int CandidatesEvaluated;
+        public static int ChainsCreated;
+        public static int ChainsDominated;
+        public static int ChainsSigDuped;
+        public static int DominatesCallCount;
+        public static int DominatesBucketScans;
+        public static int ShapeHitExact;
+        public static int ShapeMissNew;
+        public static int ShapeHitWorse;
+        public static int ShapeHitBetter;
+        public static int FrontierEvictions;
+        public static int UniqueResultIndices;
+
         private static long NowTicks() => Stopwatch.GetTimestamp();
 
         public static void Reset()
@@ -43,6 +58,20 @@ namespace CookBook
             Array.Clear(_maxExcTicks, 0, _maxExcTicks.Length);
             for (int i = 0; i < _minExcTicks.Length; i++) _minExcTicks[i] = long.MaxValue;
             _stack.Value?.Reset();
+
+            BfsNodesPopped = 0;
+            CandidatesEvaluated = 0;
+            ChainsCreated = 0;
+            ChainsDominated = 0;
+            ChainsSigDuped = 0;
+            DominatesCallCount = 0;
+            DominatesBucketScans = 0;
+            ShapeHitExact = 0;
+            ShapeMissNew = 0;
+            ShapeHitWorse = 0;
+            ShapeHitBetter = 0;
+            FrontierEvictions = 0;
+            UniqueResultIndices = 0;
         }
 
         // Per-thread stack of active scopes
@@ -186,6 +215,7 @@ namespace CookBook
 
                 log.LogInfo($"[Perf] {(Region)idx,-20} inc={incMs,8:F2}ms ({pctInc,6:F2}%)  exc={excMs,8:F2}ms ({pctExc,6:F2}%)  calls={calls}  min={minMs:F4}ms  max={maxMs:F4}ms");
             }
+
         }
 #else
         public static void Reset()

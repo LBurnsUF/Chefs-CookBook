@@ -218,7 +218,6 @@ namespace CookBook
                     CraftUI.CloseCraftPanel(controller);
 
                     // Wait for the server to release the prompt participant (SyncVar)
-                    // rather than a fixed delay, since network latency varies
                     float releaseBudget = 3.0f;
                     while (releaseBudget > 0f)
                     {
@@ -894,7 +893,7 @@ namespace CookBook
         {
             DebugLog.Trace(_log, "┌──────────────────────────────────────────────────────────┐");
             DebugLog.Trace(_log, $"│ CHAIN EXECUTION: {GetItemName(chain.ResultIndex)} (x{repeatCount})");
-            DebugLog.Trace(_log, "├──────────────────────────────────────────────────────────┘");
+            DebugLog.Trace(_log, "├───────────────────────────────────────────────────────────");
 
             if (chain.DroneCostSparse.Length > 0)
             {
@@ -923,7 +922,7 @@ namespace CookBook
                 string ingredients = FormatStepIngredients(step);
                 DebugLog.Trace(_log, $"│   Step {i + 1}: [{ingredients}] —> {step.ResultCount}x {GetItemName(step.ResultIndex)}");
             }
-            DebugLog.Trace(_log, "└──────────────────────────────────────────────────────────");
+            DebugLog.Trace(_log, "└─────────────────────────────────────────────────────────┘");
         }
 
         private static string FormatStepIngredients(ChefRecipe step)
@@ -946,7 +945,9 @@ namespace CookBook
         private static string GetItemName(int unifiedIndex)
         {
             if (unifiedIndex < ItemCatalog.itemCount)
+            {
                 return Language.GetString(ItemCatalog.GetItemDef((ItemIndex)unifiedIndex)?.nameToken ?? "Unknown Item");
+            }
             return Language.GetString(EquipmentCatalog.GetEquipmentDef((EquipmentIndex)(unifiedIndex - ItemCatalog.itemCount))?.nameToken ?? "Unknown Equip");
         }
     }

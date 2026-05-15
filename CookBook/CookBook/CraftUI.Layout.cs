@@ -2,7 +2,6 @@ namespace CookBook
 {
     internal static partial class CraftUI
     {
-        // ---------------- Layout constants ----------------
         internal static float _panelWidth;
         internal static float _panelHeight;
 

@@ -10,8 +10,6 @@ namespace CookBook
     {
         internal static void AcquireTemplates(CraftingPanel craftingPanel, RectTransform cbRT)
         {
-
-
             CookBookSkeleton(cbRT);
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();

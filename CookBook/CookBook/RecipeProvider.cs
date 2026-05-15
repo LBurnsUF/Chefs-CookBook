@@ -335,7 +335,7 @@ namespace CookBook
         {
             if (!CookBook.PreventCorruptedCrafting.Value || corruptedIndices == null || corruptedIndices.Count == 0)
             {
-                // If you want to avoid allocating here, you can return _recipes if callers treat it as read-only.
+                // Note to self, to avoid allocating here, you can return _recipes if callers treat it as read-only.
                 return new List<ChefRecipe>(_recipes);
             }
 

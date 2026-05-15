@@ -30,6 +30,7 @@
 		<Compile Include="DialogueHooks.cs" />
 		<Compile Include="InventoryTracker.cs" />
 		<Compile Include="Log.cs" />
+		<Compile Include="BenchDump.cs" />
 		<Compile Include="PerfProfile.cs" />
 		<Compile Include="Plugin.cs" />
 		<Compile Include="RecipeFilter.cs" />

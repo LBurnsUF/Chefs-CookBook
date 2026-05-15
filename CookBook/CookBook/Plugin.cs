@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using static CookBook.TierManager;
-using static RoR2.Console;
 
 namespace CookBook
 {
@@ -139,6 +138,9 @@ namespace CookBook
             RecipeProvider.Init(Log); // Parse all chef recipe rules
             ChatNetworkHandler.Init(Log);
 
+#if COOKBOOK_PERF
+            BenchDump.Init(Log);
+#endif
             StateController.Init(Log); // Initialize chef/state logic
             InventoryTracker.Init(Log); // Begin waiting for Enable signal
 
@@ -206,6 +208,13 @@ namespace CookBook
             DialogueHooks.ChefUiClosed += StateController.OnChefUiClosed;
             On.RoR2.CraftingController.FilterAvailableOptions += RecipeFilter.PatchVanillaNRE;
         }
+
+#if COOKBOOK_PERF
+        private void Update()
+        {
+            BenchCommands.PollDumpKey();
+        }
+#endif
 
         private void OnDestroy()
         {
@@ -283,7 +292,6 @@ namespace CookBook
                 Log.LogWarning($"CookBook: CleanerChef interop failed; skipping. {e.GetType().Name}: {e.Message}");
             }
         }
-
     }
 
     internal static class DebugLog
@@ -303,4 +311,26 @@ namespace CookBook
             log.LogDebug(message);
         }
     }
+
+#if COOKBOOK_PERF
+    public static class BenchCommands
+    {
+        private static bool _dumpKeyWasDown;
+
+        /// <summary>
+        /// Call from MonoBehaviour.Update(). Press F9 to trigger bench dump.
+        /// </summary>
+        public static void PollDumpKey()
+        {
+            bool isDown = UnityEngine.Input.GetKey(UnityEngine.KeyCode.F9);
+            if (isDown && !_dumpKeyWasDown)
+            {
+                BenchDump.DumpRequested = true;
+                StateController.TakeSnapshot();
+                CookBook.Log.LogWarning("[BenchDump] F9 pressed — dump will fire after next compute.");
+            }
+            _dumpKeyWasDown = isDown;
+        }
+    }
+#endif
 }

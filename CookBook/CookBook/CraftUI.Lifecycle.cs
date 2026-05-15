@@ -9,7 +9,6 @@ namespace CookBook
 {
     internal static partial class CraftUI
     {
-        //==================== LifeCycle ====================
         internal static void Init(ManualLogSource log)
         {
             _log = log;

@@ -8,7 +8,6 @@ namespace CookBook
 {
     internal static partial class CraftUI
     {
-        //=========================== Events ===========================
         internal static void OnRepeatInputEndEdit(string val)
         {
             if (_selectedChainData == null)

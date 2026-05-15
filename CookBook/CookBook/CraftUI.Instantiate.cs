@@ -8,8 +8,6 @@ namespace CookBook
 {
     internal static partial class CraftUI
     {
-
-        //==================== Instantiation ====================
         internal static GameObject CreateRecipeRow(RectTransform parent, CraftableEntry entry)
         {
             if (_recipeRowTemplate == null) return null;
