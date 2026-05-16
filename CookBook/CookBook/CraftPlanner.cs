@@ -25,8 +25,12 @@ namespace CookBook
         private readonly int _maskWords;
         private ulong[] _haveMaskBuffer;
         private Dictionary<int, CraftableEntry> _entryCache = new();
+#if COOKBOOK_BENCH
+        internal IReadOnlyDictionary<int, CraftableEntry> EntryCache => _entryCache;
+#endif
 
-        private readonly Dictionary<long, List<BestCostRecord>> _frontier = new();
+        private List<BestCostRecord>[] _frontierByIdx;
+        private readonly Dictionary<long, List<BestCostRecord>> _frontierOverflow = new();
 
         private int[] _candidateMark;
         private int _candidateStamp = 1;
@@ -52,6 +56,28 @@ namespace CookBook
         private int _droneTouchedCount;
         private readonly HashSet<ulong> _scrappedDronesThisChain = new();
         private int[] _scrapSurplusThisChain;
+        private int[] _scrapSurplusDirty;
+        private int _scrapSurplusDirtyCount;
+        private TradeRequirement[] _tradeScratch = new TradeRequirement[16];
+        private int _tradeScratchCount;
+        private bool _tradeScratchIsAlias;
+        private TradeRequirement[] _tradeScratchAlias;
+        private Ingredient[] _physScratch = new Ingredient[32];
+        private int _physScratchCount;
+        private (int scrapIdx, int need)[] _droneCollapsedScratch = new (int, int)[16];
+        private int _droneCollapsedCount;
+        private static readonly TradeRequirementComparer _tradeComparer = new();
+
+        private sealed class TradeRequirementComparer : IComparer<TradeRequirement>
+        {
+            public int Compare(TradeRequirement x, TradeRequirement y)
+            {
+                long xd = x.Donor ? x.Donor.netId.Value : 0L;
+                long yd = y.Donor ? y.Donor.netId.Value : 0L;
+                int c = xd.CompareTo(yd);
+                return c != 0 ? c : x.UnifiedIndex.CompareTo(y.UnifiedIndex);
+            }
+        }
 
         private int[] _profileKeys;
         private int[] _profileVals;
@@ -102,6 +128,7 @@ namespace CookBook
             _droneMark = new int[_totalDefCount];
             _droneTouched = new int[_maxDepth * 2 + 2];
             _scrapSurplusThisChain = new int[_totalDefCount];
+            _scrapSurplusDirty = new int[_totalDefCount];
 
             int maxKeys = (_maxDepth * 3) + 3;
             _profileKeys = new int[maxKeys];
@@ -112,6 +139,28 @@ namespace CookBook
 
             _surplusMaskScratch = new ulong[_maskWords];
 
+            _frontierByIdx = new List<BestCostRecord>[_totalDefCount];
+        }
+
+        private List<BestCostRecord> GetFrontierEntries(int resultIdx, int resultCount, bool create)
+        {
+            if (resultCount == 1 && (uint)resultIdx < (uint)_frontierByIdx.Length)
+            {
+                var list = _frontierByIdx[resultIdx];
+                if (list == null && create)
+                {
+                    list = new List<BestCostRecord>(4);
+                    _frontierByIdx[resultIdx] = list;
+                }
+                return list;
+            }
+            long key = OutputKey(resultIdx, resultCount);
+            if (_frontierOverflow.TryGetValue(key, out var entries))
+                return entries;
+            if (!create) return null;
+            entries = new List<BestCostRecord>(4);
+            _frontierOverflow[key] = entries;
+            return entries;
         }
 
         private void BuildRecipeIndex(IReadOnlyList<ChefRecipe> recipes)
@@ -142,7 +191,9 @@ namespace CookBook
             bool forceUpdate = false)
         {
             PerfProfile.Reset();
+#if COOKBOOK_PERF
             using (PerfProfile.Measure(PerfProfile.Region.TotalCompute))
+#endif
             {
                 canScrapDrones = snap.CanScrapDrones;
                 isPoolingEnabled = snap.IsPoolingEnabled;
@@ -187,7 +238,9 @@ namespace CookBook
                 }
 
                 var sw = System.Diagnostics.Stopwatch.StartNew();
+#if COOKBOOK_PERF
                 using (PerfProfile.Measure(PerfProfile.Region.BuildRecipeIndex))
+#endif
                 {
                     BuildRecipeIndex(recipes);
                 }
@@ -200,7 +253,8 @@ namespace CookBook
 
                 Array.Clear(_activeMasterRecipe, 0, _activeMasterRecipe.Length);
                 Array.Clear(_activeRecipeByMaster, 0, _activeRecipeByMaster.Length);
-                _frontier.Clear();
+                Array.Clear(_frontierByIdx, 0, _frontierByIdx.Length);
+                _frontierOverflow.Clear();
 
                 for (int i = 0; i < recipes.Count; i++)
                 {
@@ -241,7 +295,9 @@ namespace CookBook
                 var discovered = new Dictionary<int, List<RecipeChain>>();
                 var queue = new Queue<RecipeChain>();
 
+#if COOKBOOK_PERF
                 using (PerfProfile.Measure(PerfProfile.Region.SeedLayer))
+#endif
                 {
                     for (int masterIdx = 0; masterIdx < _activeRecipeByMaster.Length; masterIdx++)
                     {
@@ -260,7 +316,9 @@ namespace CookBook
                         }
 
                         (Ingredient[] phys, DroneRequirement[] droneReqs, TradeRequirement[] trades) costs;
+#if COOKBOOK_PERF
                         using (PerfProfile.Measure(PerfProfile.Region.CalculateSplitCosts))
+#endif
                         {
                             costs = CalculateSplitCosts(null, recipe, canScrapDrones, physicalStacks, snap.AllScrapCandidates);
                         }
@@ -273,7 +331,9 @@ namespace CookBook
 
                         bool dominated;
                         (int scrapIdx, int need)[] dn;
+#if COOKBOOK_PERF
                         using (PerfProfile.Measure(PerfProfile.Region.IsChainDominated))
+#endif
                         {
                             dominated = IsChainDominated(recipe.ResultIndex, recipe.ResultCount, phys, droneReqs, trades, out dn);
                         }
@@ -283,7 +343,9 @@ namespace CookBook
                         }
 
                         RecipeChain chain;
+#if COOKBOOK_PERF
                         using (PerfProfile.Measure(PerfProfile.Region.NewChainAlloc))
+#endif
                         {
                             chain = new RecipeChain(recipe, phys, droneReqs, trades);
 #if COOKBOOK_PERF
@@ -291,14 +353,18 @@ namespace CookBook
 #endif
                         }
 
+#if COOKBOOK_PERF
                         using (PerfProfile.Measure(Region.AddChainToResults))
+#endif
                         {
                             AddChainToResults(discovered, queue, chain, dn);
                         }
                     }
                 }
 
+#if COOKBOOK_PERF
                 using (PerfProfile.Measure(PerfProfile.Region.BfsExpand))
+#endif
                 {
                     for (int d = 2; d <= _maxDepth; d++)
                     {
@@ -315,17 +381,23 @@ namespace CookBook
 #endif
                             DebugLog.CraftTrace(_log, $"[Planner][BFS] POP: chain={ChainSummary(existingChain)}");
 
+#if COOKBOOK_PERF
                             using (PerfProfile.Measure(PerfProfile.Region.CandidateBuild))
+#endif
                             {
                                 BuildCandidatesForChain(existingChain, masterCount, consumersByIngredientMaster, producersByResultMaster, haveMask);
                             }
 
+#if COOKBOOK_PERF
                             using (PerfProfile.Measure(PerfProfile.Region.ExpandTrades))
+#endif
                             {
                                 ExpandTradesForDeficits(snap, existingChain, _defKeys, _defCount, discovered, queue);
                             }
 
+#if COOKBOOK_PERF
                             using (PerfProfile.Measure(Region.CandidateLoopOverhead))
+#endif
                             {
                                 for (int c = 0; c < _candidateCount; c++)
                                 {
@@ -365,41 +437,61 @@ namespace CookBook
                                         }
                                     }
 
-                                    (Ingredient[] phys, DroneRequirement[] droneReqs, TradeRequirement[] trades) costs;
+                                    bool splitOk;
+#if COOKBOOK_PERF
                                     using (PerfProfile.Measure(PerfProfile.Region.CalculateSplitCosts))
+#endif
                                     {
-                                        costs = CalculateSplitCosts(existingChain, nextRecipe, canScrapDrones, physicalStacks, snap.AllScrapCandidates);
+                                        splitOk = CalculateSplitCostsToScratch(existingChain, nextRecipe, canScrapDrones, physicalStacks, snap.AllScrapCandidates);
                                     }
 
-                                    var (phys, droneReqs, trades) = costs;
-                                    if (phys == null)
+                                    if (!splitOk)
                                     {
-                                        TraceChainDrop("Expand", "CalculateSplitCosts failed (phys==null)", existingChain, nextRecipe);
+                                        TraceChainDrop("Expand", "CalculateSplitCosts failed", existingChain, nextRecipe);
                                         continue;
                                     }
 
                                     bool isBridgeCand = IsBridgeCandidate(masterIdx);
                                     bool dominated = false;
+                                    Ingredient[] phys;
+                                    DroneRequirement[] droneReqs;
+                                    TradeRequirement[] trades;
                                     (int scrapIdx, int need)[] dn;
+
                                     if (!isBridgeCand)
                                     {
+#if COOKBOOK_PERF
                                         using (PerfProfile.Measure(PerfProfile.Region.IsChainDominated))
+#endif
                                         {
-                                            dominated = IsChainDominated(nextRecipe.ResultIndex, nextRecipe.ResultCount, phys, droneReqs, trades, out dn);
+                                            dominated = CheckAllDominanceScratch(nextRecipe.ResultIndex, nextRecipe.ResultCount);
                                         }
                                         if (dominated)
                                         {
                                             TraceChainDrop("Expand", "Dominated", existingChain, nextRecipe);
                                             continue;
                                         }
+
+                                        // Survivor — snapshot scratch buffers and add to frontier
+                                        var snapped = SnapshotAndAddToFrontier(nextRecipe.ResultIndex, nextRecipe.ResultCount);
+                                        phys = snapped.phys;
+                                        dn = snapped.drone;
+                                        trades = snapped.trades;
                                     }
                                     else
                                     {
-                                        dn = CollapseDroneNeedsByScrapIndex(droneReqs);
+                                        // Bridge candidates skip dominance, snapshot immediately
+                                        phys = SnapshotPhysScratch();
+                                        dn = SnapshotDroneScratch();
+                                        trades = SnapshotTradeScratch();
                                     }
 
+                                    droneReqs = SnapshotDroneReqList();
+
                                     RecipeChain newChain;
+#if COOKBOOK_PERF
                                     using (PerfProfile.Measure(PerfProfile.Region.NewChainAlloc))
+#endif
                                     {
                                         newChain = new RecipeChain(existingChain, nextRecipe, phys, droneReqs, trades, isBridgeCand);
 #if COOKBOOK_PERF
@@ -407,7 +499,9 @@ namespace CookBook
 #endif
                                     }
 
+#if COOKBOOK_PERF
                                     using (PerfProfile.Measure(Region.AddChainToResults))
+#endif
                                     {
                                         AddChainToResults(discovered, queue, newChain, dn);
                                     }
@@ -417,7 +511,9 @@ namespace CookBook
                     }
                 }
 
+#if COOKBOOK_PERF
                 using (PerfProfile.Measure(PerfProfile.Region.FinalEntryBuild))
+#endif
                 {
                     _entryCache = discovered.Select(kvp =>
                     {
@@ -731,13 +827,7 @@ namespace CookBook
             tradesSorted ??= Array.Empty<TradeRequirement>();
             droneNeedsSorted = CollapseDroneNeedsByScrapIndex(droneReqs);
 
-            long outKey = OutputKey(resultIdx, resultCount);
-
-            if (!_frontier.TryGetValue(outKey, out var entries))
-            {
-                entries = new List<BestCostRecord>(4);
-                _frontier[outKey] = entries;
-            }
+            var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -768,13 +858,7 @@ namespace CookBook
             physSortedByIdx ??= Array.Empty<Ingredient>();
             tradesSorted ??= Array.Empty<TradeRequirement>();
 
-            long outKey = OutputKey(resultIdx, resultCount);
-
-            if (!_frontier.TryGetValue(outKey, out var entries))
-            {
-                entries = new List<BestCostRecord>(4);
-                _frontier[outKey] = entries;
-            }
+            var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -795,27 +879,87 @@ namespace CookBook
             return false;
         }
 
+        private bool CheckFrontierDominated(
+            int resultIdx,
+            int resultCount,
+            Ingredient[] physSortedByIdx,
+            (int scrapIdx, int need)[] droneNeedsSorted,
+            TradeRequirement[] tradesBuf, int tradesCount)
+        {
+            physSortedByIdx ??= Array.Empty<Ingredient>();
+
+            var entries = GetFrontierEntries(resultIdx, resultCount, create: false);
+            if (entries == null)
+                return false;
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var ex = entries[i];
+#if COOKBOOK_PERF
+                PerfProfile.DominatesBucketScans++;
+#endif
+                if (DominatesWithTradeSlice(ex.Phys, ex.Drone, ex.Trades,
+                        physSortedByIdx, droneNeedsSorted, tradesBuf, tradesCount))
+                {
+#if COOKBOOK_PERF
+                    PerfProfile.ChainsDominated++;
+#endif
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void AddToFrontier(
+            int resultIdx,
+            int resultCount,
+            Ingredient[] physSortedByIdx,
+            (int scrapIdx, int need)[] droneNeedsSorted,
+            TradeRequirement[] tradesSorted)
+        {
+            var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
+            entries.Add(new BestCostRecord(physSortedByIdx ?? Array.Empty<Ingredient>(), droneNeedsSorted, tradesSorted));
+        }
+
         private void CleanFrontier()
         {
-            foreach (var kvp in _frontier)
+            for (int idx = 0; idx < _frontierByIdx.Length; idx++)
             {
-                var entries = kvp.Value;
-                for (int i = entries.Count - 1; i >= 0; i--)
+                var entries = _frontierByIdx[idx];
+                if (entries == null) continue;
+                CleanFrontierBucket(entries);
+            }
+            foreach (var kvp in _frontierOverflow)
+            {
+                CleanFrontierBucket(kvp.Value);
+            }
+        }
+
+        private void CleanFrontierBucket(List<BestCostRecord> entries)
+        {
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                var candidate = entries[i];
+                bool evicted = false;
+                for (int j = 0; j < entries.Count; j++)
                 {
-                    var candidate = entries[i];
-                    for (int j = 0; j < entries.Count; j++)
+                    if (i == j) continue;
+                    if (Dominates(entries[j].Phys, entries[j].Drone, entries[j].Trades,
+                                  candidate.Phys, candidate.Drone, candidate.Trades))
                     {
-                        if (i == j) continue;
-                        if (Dominates(entries[j].Phys, entries[j].Drone, entries[j].Trades,
-                                      candidate.Phys, candidate.Drone, candidate.Trades))
-                        {
 #if COOKBOOK_PERF
-                            PerfProfile.FrontierEvictions++;
+                        PerfProfile.FrontierEvictions++;
 #endif
-                            entries.RemoveAt(i);
-                            break;
-                        }
+                        evicted = true;
+                        break;
                     }
+                }
+                if (evicted)
+                {
+                    int last = entries.Count - 1;
+                    if (i < last)
+                        entries[i] = entries[last];
+                    entries.RemoveAt(last);
                 }
             }
         }
@@ -974,6 +1118,67 @@ namespace CookBook
             return weakOnly || strict;
         }
 
+        private static bool DominatesWithTradeSlice(
+          Ingredient[] aPhys, (int scrapIdx, int need)[] aDrone, TradeRequirement[] aTrades,
+          Ingredient[] bPhys, (int scrapIdx, int need)[] bDrone, TradeRequirement[] bTradesBuf, int bTradesCount)
+        {
+            aPhys ??= Array.Empty<Ingredient>();
+            bPhys ??= Array.Empty<Ingredient>();
+            aDrone ??= Array.Empty<(int, int)>();
+            bDrone ??= Array.Empty<(int, int)>();
+            aTrades ??= Array.Empty<TradeRequirement>();
+
+            bool strict = false;
+
+            if (!DominatesPhys(aPhys, bPhys, ref strict)) return false;
+            if (!DominatesDrone(aDrone, bDrone, ref strict)) return false;
+            if (!DominatesTradesSlice(aTrades, bTradesBuf, bTradesCount, ref strict)) return false;
+
+            return true;
+        }
+
+        private static bool DominatesTradesSlice(TradeRequirement[] a, TradeRequirement[] b, int bLen, ref bool strict)
+        {
+            int i = 0, j = 0;
+
+            while (i < a.Length || j < bLen)
+            {
+                (long donorId, int item) aKey = (long.MaxValue, int.MaxValue);
+                (long donorId, int item) bKey = (long.MaxValue, int.MaxValue);
+
+                if (i < a.Length)
+                    aKey = (a[i].Donor ? a[i].Donor.netId.Value : 0L, a[i].UnifiedIndex);
+
+                if (j < bLen)
+                    bKey = (b[j].Donor ? b[j].Donor.netId.Value : 0L, b[j].UnifiedIndex);
+
+                int cmp = aKey.donorId.CompareTo(bKey.donorId);
+                if (cmp == 0) cmp = aKey.item.CompareTo(bKey.item);
+
+                if (cmp == 0)
+                {
+                    int av = a[i].TradesRequired;
+                    int bv = b[j].TradesRequired;
+
+                    if (av > bv) return false;
+                    if (av < bv) strict = true;
+
+                    i++; j++;
+                }
+                else if (cmp < 0)
+                {
+                    if (a[i].TradesRequired > 0) return false;
+                    i++;
+                }
+                else
+                {
+                    if (b[j].TradesRequired > 0) strict = true;
+                    j++;
+                }
+            }
+            return true;
+        }
+
         private static bool DominatesPhys(Ingredient[] a, Ingredient[] b, ref bool strict)
         {
             int i = 0, j = 0;
@@ -1090,6 +1295,126 @@ namespace CookBook
             return true;
         }
 
+        // ------------ Scratch-based dominance (deferred allocation) ------------
+
+        private bool CheckAllDominanceScratch(int resultIdx, int resultCount)
+        {
+            var entries = GetFrontierEntries(resultIdx, resultCount, create: false);
+            if (entries == null)
+                return false;
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var ex = entries[i];
+#if COOKBOOK_PERF
+                PerfProfile.DominatesBucketScans++;
+#endif
+                if (DominatesAgainstScratch(ex.Phys, ex.Drone, ex.Trades))
+                {
+#if COOKBOOK_PERF
+                    PerfProfile.ChainsDominated++;
+#endif
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private bool DominatesAgainstScratch(
+            Ingredient[] aPhys, (int scrapIdx, int need)[] aDrone, TradeRequirement[] aTrades)
+        {
+#if COOKBOOK_PERF
+            PerfProfile.DominatesCallCount++;
+#endif
+            aPhys ??= Array.Empty<Ingredient>();
+            aDrone ??= Array.Empty<(int, int)>();
+            aTrades ??= Array.Empty<TradeRequirement>();
+
+            bool strict = false;
+
+            if (!DominatesPhysSlice(aPhys, _physScratch, _physScratchCount, ref strict)) return false;
+            if (!DominatesDroneSlice(aDrone, _droneCollapsedScratch, _droneCollapsedCount, ref strict)) return false;
+
+            var tradeBuf = _tradeScratchIsAlias ? _tradeScratchAlias : _tradeScratch;
+            if (!DominatesTradesSlice(aTrades, tradeBuf, _tradeScratchCount, ref strict)) return false;
+
+            return true; // weakOnly equivalent
+        }
+
+        private static bool DominatesPhysSlice(Ingredient[] a, Ingredient[] b, int bLen, ref bool strict)
+        {
+            int i = 0, j = 0;
+            while (i < a.Length || j < bLen)
+            {
+                int ai = (i < a.Length) ? a[i].UnifiedIndex : int.MaxValue;
+                int bi = (j < bLen) ? b[j].UnifiedIndex : int.MaxValue;
+
+                if (ai == bi)
+                {
+                    int av = a[i].Count;
+                    int bv = b[j].Count;
+                    if (av > bv) return false;
+                    if (av < bv) strict = true;
+                    i++; j++;
+                }
+                else if (ai < bi)
+                {
+                    if (a[i].Count > 0) return false;
+                    i++;
+                }
+                else
+                {
+                    if (b[j].Count > 0) strict = true;
+                    j++;
+                }
+            }
+            return true;
+        }
+
+        private static bool DominatesDroneSlice(
+            (int scrapIdx, int need)[] a, (int scrapIdx, int need)[] b, int bLen, ref bool strict)
+        {
+            int i = 0, j = 0;
+            while (i < a.Length || j < bLen)
+            {
+                int ak = (i < a.Length) ? a[i].scrapIdx : int.MaxValue;
+                int bk = (j < bLen) ? b[j].scrapIdx : int.MaxValue;
+
+                if (ak == bk)
+                {
+                    int av = a[i].need;
+                    int bv = b[j].need;
+                    if (av > bv) return false;
+                    if (av < bv) strict = true;
+                    i++; j++;
+                }
+                else if (ak < bk)
+                {
+                    if (a[i].need > 0) return false;
+                    i++;
+                }
+                else
+                {
+                    if (b[j].need > 0) strict = true;
+                    j++;
+                }
+            }
+            return true;
+        }
+
+        private (Ingredient[] phys, (int scrapIdx, int need)[] drone, TradeRequirement[] trades)
+            SnapshotAndAddToFrontier(int resultIdx, int resultCount)
+        {
+            var phys = SnapshotPhysScratch();
+            var drone = SnapshotDroneScratch();
+            var trades = SnapshotTradeScratch();
+
+            var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
+            entries.Add(new BestCostRecord(phys, drone, trades));
+
+            return (phys, drone, trades);
+        }
+
         private static long OutputKey(int resultIdx, int resultCount)
         {
             unchecked
@@ -1153,6 +1478,71 @@ namespace CookBook
 
         private static readonly Comparison<(int scrapIdx, int need)> _cmpScrapIdx =
       (a, b) => a.scrapIdx.CompareTo(b.scrapIdx);
+
+        private void CollapseDroneToScratch(List<DroneRequirement> drones)
+        {
+            if (drones == null || drones.Count == 0)
+            {
+                _droneCollapsedCount = 0;
+                return;
+            }
+
+            int stamp = ++_droneStamp;
+            if (_droneStamp == int.MaxValue)
+            {
+                Array.Clear(_droneMark, 0, _droneMark.Length);
+                _droneStamp = 1;
+                stamp = 1;
+            }
+
+            _droneTouchedCount = 0;
+
+            for (int i = 0; i < drones.Count; i++)
+            {
+                int cnt = drones[i].Count;
+                if (cnt <= 0) continue;
+
+                int s = drones[i].ScrapIndex;
+                if ((uint)s >= (uint)_droneNeedScratch.Length) continue;
+
+                if (_droneMark[s] != stamp)
+                {
+                    _droneMark[s] = stamp;
+                    _droneNeedScratch[s] = 0;
+
+                    if (_droneTouchedCount >= _droneTouched.Length)
+                    {
+                        _droneCollapsedCount = 0;
+                        return;
+                    }
+
+                    _droneTouched[_droneTouchedCount++] = s;
+                }
+
+                _droneNeedScratch[s] += cnt;
+            }
+
+            if (_droneTouchedCount == 0)
+            {
+                _droneCollapsedCount = 0;
+                return;
+            }
+
+            if (_droneTouchedCount > _droneCollapsedScratch.Length)
+                _droneCollapsedScratch = new (int, int)[_droneTouchedCount * 2];
+
+            for (int i = 0; i < _droneTouchedCount; i++)
+            {
+                int s = _droneTouched[i];
+                _droneCollapsedScratch[i] = (s, _droneNeedScratch[s]);
+            }
+
+            _droneCollapsedCount = _droneTouchedCount;
+
+            if (_droneCollapsedCount > 1)
+                Array.Sort(_droneCollapsedScratch, 0, _droneCollapsedCount,
+                    Comparer<(int scrapIdx, int need)>.Create(_cmpScrapIdx));
+        }
 
         // ---------------- Affordability ------------------
         private static bool IsRecipeAffordable(
@@ -1294,23 +1684,30 @@ namespace CookBook
 
                     if (tradesLeft <= 0) continue;
 
-                    var updatedTradeReqs = SortTradesCanonical(UpdateTradeRequirements(existingTradeReqs, donor, idx));
-
+                    UpdateTradeRequirementsToScratch(existingTradeReqs, donor, idx);
+                    SortTradeScratch();
 
                     bool dominated;
+#if COOKBOOK_PERF
                     using (PerfProfile.Measure(Region.IsChainDominated))
+#endif
                     {
-                        dominated = IsChainDominated(idx, 1,
+                        dominated = CheckFrontierDominated(idx, 1,
                             chain.PhysicalCostSparse,
                             collapsedDroneNeedsForChain,
-                            updatedTradeReqs);
+                            _tradeScratch, _tradeScratchCount);
                     }
                     if (dominated) continue;
+
+                    var updatedTradeReqs = SnapshotTradeScratch();
+                    AddToFrontier(idx, 1, chain.PhysicalCostSparse, collapsedDroneNeedsForChain, updatedTradeReqs);
 
                     var trade = new TradeRecipe(donor, idx);
                     var newChain = new RecipeChain(chain, trade, chain.PhysicalCostSparse, chain.DroneCostSparse, updatedTradeReqs, isIntermediate: false);
 
+#if COOKBOOK_PERF
                     using (PerfProfile.Measure(Region.AddChainToResults))
+#endif
                     {
                         AddChainToResults(discovered, queue, newChain, collapsedDroneNeedsForChain);
                     }
@@ -1342,6 +1739,73 @@ namespace CookBook
             return result;
         }
 
+        private void UpdateTradeRequirementsToScratch(TradeRequirement[] existing, NetworkUser donor, int itemIdx)
+        {
+            _tradeScratchIsAlias = false;
+            int needed = existing.Length + 1;
+            if (_tradeScratch.Length < needed)
+                _tradeScratch = new TradeRequirement[needed * 2];
+
+            bool found = false;
+            for (int i = 0; i < existing.Length; i++)
+            {
+                _tradeScratch[i] = existing[i];
+                if (!found && existing[i].Donor && donor &&
+                    existing[i].Donor.netId == donor.netId &&
+                    existing[i].UnifiedIndex == itemIdx)
+                {
+                    _tradeScratch[i].TradesRequired++;
+                    found = true;
+                }
+            }
+
+            if (found)
+            {
+                _tradeScratchCount = existing.Length;
+            }
+            else
+            {
+                _tradeScratch[existing.Length] = new TradeRequirement { Donor = donor, UnifiedIndex = itemIdx, TradesRequired = 1 };
+                _tradeScratchCount = existing.Length + 1;
+            }
+        }
+
+        private void SortTradeScratch()
+        {
+            if (_tradeScratchCount <= 1) return;
+            Array.Sort(_tradeScratch, 0, _tradeScratchCount, _tradeComparer);
+        }
+
+        private TradeRequirement[] SnapshotTradeScratch()
+        {
+            if (_tradeScratchCount == 0) return Array.Empty<TradeRequirement>();
+            if (_tradeScratchIsAlias) return _tradeScratchAlias;
+            var result = new TradeRequirement[_tradeScratchCount];
+            Array.Copy(_tradeScratch, result, _tradeScratchCount);
+            return result;
+        }
+
+        private Ingredient[] SnapshotPhysScratch()
+        {
+            if (_physScratchCount == 0) return Array.Empty<Ingredient>();
+            var result = new Ingredient[_physScratchCount];
+            Array.Copy(_physScratch, result, _physScratchCount);
+            return result;
+        }
+
+        private (int scrapIdx, int need)[] SnapshotDroneScratch()
+        {
+            if (_droneCollapsedCount == 0) return Array.Empty<(int, int)>();
+            var result = new (int scrapIdx, int need)[_droneCollapsedCount];
+            Array.Copy(_droneCollapsedScratch, result, _droneCollapsedCount);
+            return result;
+        }
+
+        private DroneRequirement[] SnapshotDroneReqList()
+        {
+            return _tempDroneReqList.Count > 0 ? _tempDroneReqList.ToArray() : Array.Empty<DroneRequirement>();
+        }
+
         private static int GetAlreadyTradedCount(TradeRequirement[] reqs, NetworkUser donor, int idx)
         {
             for (int i = 0; i < reqs.Length; i++)
@@ -1364,7 +1828,9 @@ namespace CookBook
             int deficit = Math.Max(0, needCount - Math.Max(0, netSurplus));
             if (deficit <= 0) return true;
             int alreadySpent = (old == null) ? 0 : Math.Max(0, -netSurplus);
+#if COOKBOOK_PERF
             using (PerfProfile.Measure(PerfProfile.Region.ResolveRequirement))
+#endif
             {
                 return ResolveRequirement(idx, deficit, canScrapDrones, physicalStacks, alreadySpent, allScrapCandidates, _scrappedDronesThisChain, _scrapSurplusThisChain, ref add0Idx, ref add0Cnt, ref add1Idx, ref add1Cnt);
             }
@@ -1378,7 +1844,9 @@ namespace CookBook
           Dictionary<int, List<DroneCandidate>> allScrapCandidates)
         {
             _scrappedDronesThisChain.Clear();
-            Array.Clear(_scrapSurplusThisChain, 0, _scrapSurplusThisChain.Length);
+            for (int d = 0; d < _scrapSurplusDirtyCount; d++)
+                _scrapSurplusThisChain[_scrapSurplusDirty[d]] = 0;
+            _scrapSurplusDirtyCount = 0;
             _tempDroneReqList.Clear();
 
             Ingredient[] phys = old?.PhysicalCostSparse ?? Array.Empty<Ingredient>();
@@ -1398,14 +1866,60 @@ namespace CookBook
                     return (null, null, null);
             }
 
+#if COOKBOOK_PERF
             using (PerfProfile.Measure(PerfProfile.Region.PhysConsolidateAlloc))
+#endif
             {
                 phys = MergePhysAdds(phys, add0Idx, add0Cnt, add1Idx, add1Cnt);
             }
 
             var trades = ExtractTrades(old, next);
             trades = SortTradesCanonical(trades);
-            return (phys, _tempDroneReqList.ToArray(), trades);
+            var drones = _tempDroneReqList.Count > 0 ? _tempDroneReqList.ToArray() : Array.Empty<DroneRequirement>();
+            return (phys, drones, trades);
+        }
+
+        private bool CalculateSplitCostsToScratch(
+          RecipeChain old,
+          ChefRecipe next,
+          bool canScrapDrones,
+          int[] physicalStacks,
+          Dictionary<int, List<DroneCandidate>> allScrapCandidates)
+        {
+            _scrappedDronesThisChain.Clear();
+            for (int d = 0; d < _scrapSurplusDirtyCount; d++)
+                _scrapSurplusThisChain[_scrapSurplusDirty[d]] = 0;
+            _scrapSurplusDirtyCount = 0;
+            _tempDroneReqList.Clear();
+
+            Ingredient[] basePhys = old?.PhysicalCostSparse ?? Array.Empty<Ingredient>();
+
+            int add0Idx = -1, add0Cnt = 0;
+            int add1Idx = -1, add1Cnt = 0;
+
+            if (next.CountA > 0 && next.IngA >= 0)
+            {
+                if (!ResolveIngredientCost(old, next.IngA, next.CountA, canScrapDrones, physicalStacks, allScrapCandidates, ref add0Idx, ref add0Cnt, ref add1Idx, ref add1Cnt))
+                    return false;
+            }
+
+            if (next.HasB && next.CountB > 0 && next.IngB >= 0)
+            {
+                if (!ResolveIngredientCost(old, next.IngB, next.CountB, canScrapDrones, physicalStacks, allScrapCandidates, ref add0Idx, ref add0Cnt, ref add1Idx, ref add1Cnt))
+                    return false;
+            }
+
+#if COOKBOOK_PERF
+            using (PerfProfile.Measure(PerfProfile.Region.PhysConsolidateAlloc))
+#endif
+            {
+                MergePhysToScratch(basePhys, add0Idx, add0Cnt, add1Idx, add1Cnt);
+            }
+
+            ExtractTradesToScratch(old, next);
+            CollapseDroneToScratch(_tempDroneReqList);
+
+            return true;
         }
 
         private static Ingredient[] MergePhysAdds(Ingredient[] basePhys, int aIdx, int aCnt, int bIdx, int bCnt)
@@ -1472,6 +1986,76 @@ namespace CookBook
             return dst;
         }
 
+        private void MergePhysToScratch(Ingredient[] basePhys, int aIdx, int aCnt, int bIdx, int bCnt)
+        {
+            if (aCnt <= 0 && bCnt <= 0)
+            {
+                int baseLen0 = basePhys?.Length ?? 0;
+                if (baseLen0 > _physScratch.Length)
+                    _physScratch = new Ingredient[baseLen0 * 2];
+                if (baseLen0 > 0)
+                    Array.Copy(basePhys, _physScratch, baseLen0);
+                _physScratchCount = baseLen0;
+                return;
+            }
+
+            // Normalize
+            if (aCnt > 0 && bCnt > 0)
+            {
+                if (aIdx == bIdx)
+                {
+                    aCnt += bCnt;
+                    bCnt = 0;
+                }
+                else if (bIdx < aIdx)
+                {
+                    (aIdx, bIdx) = (bIdx, aIdx);
+                    (aCnt, bCnt) = (bCnt, aCnt);
+                }
+            }
+
+            int baseLen = basePhys?.Length ?? 0;
+
+            bool aExists = false, bExists = false;
+            if (baseLen > 0)
+            {
+                if (aCnt > 0) aExists = ContainsIndex(basePhys, aIdx);
+                if (bCnt > 0) bExists = ContainsIndex(basePhys, bIdx);
+            }
+
+            int newLen = baseLen + (aCnt > 0 && !aExists ? 1 : 0) + (bCnt > 0 && !bExists ? 1 : 0);
+
+            if (newLen > _physScratch.Length)
+                _physScratch = new Ingredient[newLen * 2];
+
+            int i = 0, j = 0;
+
+            void emitAdd(int addIdx, int addCnt)
+            {
+                if (addCnt <= 0) return;
+
+                while (i < baseLen && basePhys[i].UnifiedIndex < addIdx)
+                    _physScratch[j++] = basePhys[i++];
+
+                if (i < baseLen && basePhys[i].UnifiedIndex == addIdx)
+                {
+                    var cur = basePhys[i++];
+                    _physScratch[j++] = new Ingredient(cur.UnifiedIndex, cur.Count + addCnt);
+                    return;
+                }
+
+                _physScratch[j++] = new Ingredient(addIdx, addCnt);
+            }
+
+            if (aCnt > 0) emitAdd(aIdx, aCnt);
+            if (bCnt > 0) emitAdd(bIdx, bCnt);
+
+            while (i < baseLen)
+                _physScratch[j++] = basePhys[i++];
+
+            _physScratchCount = newLen;
+        }
+
         private bool ResolveRequirement(
           int unifiedIndex,
           int amountNeeded,
@@ -1511,6 +2095,7 @@ namespace CookBook
                 {
                     int use = Math.Min(surplus, deficit);
                     scrapSurplusByUnifiedIdx[unifiedIndex] = surplus - use;
+                    _scrapSurplusDirty[_scrapSurplusDirtyCount++] = unifiedIndex;
                     deficit -= use;
                     if (deficit <= 0)
                         return true;
@@ -1544,7 +2129,11 @@ namespace CookBook
 
                 int leftover = capacity - useNow;
                 if (leftover > 0 && (uint)unifiedIndex < (uint)scrapSurplusByUnifiedIdx.Length)
+                {
+                    if (scrapSurplusByUnifiedIdx[unifiedIndex] == 0)
+                        _scrapSurplusDirty[_scrapSurplusDirtyCount++] = unifiedIndex;
                     scrapSurplusByUnifiedIdx[unifiedIndex] += leftover;
+                }
 
                 if (deficit <= 0)
                     return true;
@@ -1561,6 +2150,23 @@ namespace CookBook
                 return prev;
 
             return UpdateTradeRequirements(prev, tr.Donor, tr.ItemUnifiedIndex);
+        }
+
+        private void ExtractTradesToScratch(RecipeChain old, ChefRecipe next)
+        {
+            var prev = old?.AlliedTradeSparse ?? Array.Empty<TradeRequirement>();
+
+            if (next is not TradeRecipe tr)
+            {
+                _tradeScratchCount = prev.Length;
+                _tradeScratchIsAlias = true;
+                _tradeScratchAlias = prev;
+                return;
+            }
+
+            _tradeScratchIsAlias = false;
+            UpdateTradeRequirementsToScratch(prev, tr.Donor, tr.ItemUnifiedIndex);
+            SortTradeScratch();
         }
 
         private static void AccumulatePhysCost(int idx, int cnt,

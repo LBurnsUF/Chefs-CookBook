@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using BepInEx.Logging;
 using RoR2;
 using UnityEngine.Networking;
@@ -122,6 +123,7 @@ namespace CookBook.Bench
             warmup.ComputeCraftable(in snapshot, forceUpdate: true);
 
             var times = new double[runs];
+            CraftPlanner lastPlanner = null;
             for (int r = 0; r < runs; r++)
             {
                 PerfProfile.Reset();
@@ -132,6 +134,7 @@ namespace CookBook.Bench
 
                 sw.Stop();
                 times[r] = sw.Elapsed.TotalMilliseconds;
+                lastPlanner = p;
             }
 
             PerfProfile.LogSummary(log, topN: 14);
@@ -143,10 +146,12 @@ namespace CookBook.Bench
             Console.WriteLine($"\n  Timing: min={times[0]:F2}  med={times[runs / 2]:F2}  max={times[runs - 1]:F2}  avg={sum / runs:F2} ms");
 
             PrintAlgorithmAnalysis();
+            PrintChainDiagnostics(lastPlanner, data);
         }
 
         private static void PrintAlgorithmAnalysis()
         {
+#if COOKBOOK_PERF
             int nodes       = PerfProfile.BfsNodesPopped;
             int candidates  = PerfProfile.CandidatesEvaluated;
             int created     = PerfProfile.ChainsCreated;
@@ -155,7 +160,6 @@ namespace CookBook.Bench
             int bucketScans = PerfProfile.DominatesBucketScans;
             int evictions   = PerfProfile.FrontierEvictions;
             int uniqueRes   = PerfProfile.UniqueResultIndices;
-
             int totalChecked = dominated + created;
 
             Console.WriteLine("\n--- Algorithm Counters ---");
@@ -176,6 +180,9 @@ namespace CookBook.Bench
             Console.WriteLine($"  Avg bucket scans per dom call: {Ratio(bucketScans, totalChecked)}  (pair comparisons per IsChainDominated)");
             Console.WriteLine($"  Candidates per BFS node:       {Ratio(candidates, nodes)}");
             Console.WriteLine($"  Chains per candidate:          {Ratio(created, candidates)}");
+#else
+            Console.WriteLine("\n  (Algorithm counters disabled — build without COOKBOOK_PERF)");
+#endif
         }
 
         private static string Pct(int num, int den)
@@ -183,6 +190,65 @@ namespace CookBook.Bench
 
         private static string Ratio(int num, int den)
             => den > 0 ? $"{(double)num / den:F1}" : "N/A";
+
+        private static void PrintChainDiagnostics(CraftPlanner planner, SnapshotLoader.BenchData data)
+        {
+            var entries = planner.EntryCache;
+            if (entries == null || entries.Count == 0) return;
+
+            var counts = entries.Values
+                .Select(e => (name: GetName(e.ResultIndex, data), count: e.Chains.Count, idx: e.ResultIndex, chains: e.Chains))
+                .OrderByDescending(x => x.count)
+                .ToList();
+
+            Console.WriteLine("\n--- Chain Distribution ---");
+            Console.WriteLine($"  Total results: {counts.Count}");
+
+            var histogram = counts.GroupBy(x => x.count).OrderBy(g => g.Key).ToList();
+            Console.WriteLine("  Histogram (chains per result -> result count):");
+            foreach (var g in histogram)
+                Console.WriteLine($"    {g.Key,4} chains: {g.Count()} results");
+
+            Console.WriteLine("\n  Top 10 results by chain count:");
+            foreach (var item in counts.Take(10))
+            {
+                Console.WriteLine($"\n    [{item.name}] ({item.count} chains):");
+
+                foreach (var chain in item.chains.Take(20))
+                {
+                    var physParts = chain.PhysicalCostSparse?
+                        .Where(p => p.Count > 0)
+                        .Select(p => $"{GetName(p.UnifiedIndex, data)}x{p.Count}")
+                        .ToList() ?? new List<string>();
+
+                    var droneParts = chain.DroneCostSparse?
+                        .Where(d => d.Count > 0)
+                        .Select(d => $"drone({GetName(d.ScrapIndex, data)}x{d.Count})")
+                        .ToList() ?? new List<string>();
+
+                    var tradeParts = chain.AlliedTradeSparse?
+                        .Where(t => t.TradesRequired > 0)
+                        .Select(t => $"trade({GetName(t.UnifiedIndex, data)}x{t.TradesRequired})")
+                        .ToList() ?? new List<string>();
+
+                    var allCosts = physParts.Concat(droneParts).Concat(tradeParts).ToList();
+                    string costStr = allCosts.Count > 0 ? string.Join(" + ", allCosts) : "(free)";
+
+                    var steps = chain.Steps;
+                    string path = string.Join(" -> ", steps.Select(s => GetName(s.ResultIndex, data)));
+
+                    Console.WriteLine($"      d{chain.Depth}: {costStr}");
+                    Console.WriteLine($"        path: {path}");
+                }
+            }
+        }
+
+        private static string GetName(int unifiedIndex, SnapshotLoader.BenchData data)
+        {
+            if (data.ItemNames.TryGetValue(unifiedIndex.ToString(), out var n))
+                return n;
+            return $"#{unifiedIndex}";
+        }
 
         internal class SyntheticData
         {

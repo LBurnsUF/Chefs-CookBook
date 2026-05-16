@@ -215,7 +215,7 @@ namespace CookBook
     internal static class CookBook
     {
         internal static StubConfig<int> MaxBridgeItemsPerChain = new(3);
-        internal static StubConfig<int> MaxChainsPerResult = new(10);
+        internal static StubConfig<int> MaxChainsPerResult = new(40);
         internal static StubConfig<bool> ShowCorruptedResults = new(false);
 
         internal static int ChainsLimit => MaxChainsPerResult.Value;
