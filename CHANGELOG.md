@@ -3,6 +3,18 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.3.2 - 5/15/26
+### Changed
+- Performance: Reduced worst-case CraftPlanner compute time by ~50% (57ms -> 28ms median at 10x inventory, depth 5).
+	- Deferred allocation: candidate costs now computed into scratch buffers and checked for dominance before allocating permanent arrays (~82% rejection rate = ~12K allocations avoided per run).
+	- Trade alias optimization: when trades are unchanged from parent chain, alias the parent array instead of copying.
+	- Flat frontier: replaced `Dictionary<long, List<BestCostRecord>>` with `List<BestCostRecord>[]` indexed by result for O(1) frontier lookup.
+	- Dirty-tracking for scrap surplus: only clear indices that were actually written instead of sweeping the full array.
+	- Swap-remove: replaced O(n) `List.RemoveAt` in hot paths with O(1) swap-last-and-remove-last.
+	- Eliminated `#if COOKBOOK_PERF` instrumentation overhead (~8ms from ~90K try/finally blocks) by gating all PerfProfile.Measure sites behind conditional compilation.
+
+---
+
 ## v1.3.1 - 4/2/26
 ### Fixed
 - Fixed single-ingredient recipes softlocking the crafting station due to incorrect ingredient count (CountA=1 instead of 2).
