@@ -35,6 +35,7 @@ namespace CookBook.Bench
             public ulong[][] ReqMasks { get; set; }
 
             public Dictionary<string, string> ItemNames { get; set; }
+            public Dictionary<int, int> ItemTiers { get; set; }
         }
 
         internal static BenchData Load(string path)
@@ -76,6 +77,16 @@ namespace CookBook.Bench
             {
                 foreach (var prop in namesEl.EnumerateObject())
                     data.ItemNames[prop.Name] = prop.Value.GetString();
+            }
+
+            data.ItemTiers = new Dictionary<int, int>();
+            if (root.TryGetProperty("itemTiers", out var tiersEl))
+            {
+                foreach (var prop in tiersEl.EnumerateObject())
+                {
+                    if (int.TryParse(prop.Name, out int idx))
+                        data.ItemTiers[idx] = prop.Value.GetInt32();
+                }
             }
 
             return data;

@@ -147,6 +147,13 @@ namespace CookBook.Bench
 
             PrintAlgorithmAnalysis();
             PrintChainDiagnostics(lastPlanner, data);
+
+            string dumpPath = Environment.GetEnvironmentVariable("BENCH_DUMP_PATH");
+            if (!string.IsNullOrEmpty(dumpPath))
+            {
+                DumpAllChains(lastPlanner, data, dumpPath);
+                Console.WriteLine($"\n  Full chain dump written to: {dumpPath}");
+            }
         }
 
         private static void PrintAlgorithmAnalysis()
@@ -241,6 +248,61 @@ namespace CookBook.Bench
                     Console.WriteLine($"        path: {path}");
                 }
             }
+        }
+
+        internal static void DumpAllChains(CraftPlanner planner, SnapshotLoader.BenchData data, string outPath)
+        {
+            var entries = planner.EntryCache;
+            if (entries == null || entries.Count == 0) return;
+
+            var sorted = entries.Values
+                .OrderBy(e => GetName(e.ResultIndex, data))
+                .ToList();
+
+            using var writer = new System.IO.StreamWriter(outPath);
+            foreach (var entry in sorted)
+            {
+                string resultName = GetName(entry.ResultIndex, data);
+                var chains = entry.Chains
+                    .OrderBy(c => c.Depth)
+                    .ThenBy(c => ChainSortKey(c, data))
+                    .ToList();
+
+                writer.WriteLine($"[{resultName}] ({chains.Count} chains)");
+                foreach (var chain in chains)
+                {
+                    var physParts = chain.PhysicalCostSparse?
+                        .Where(p => p.Count > 0)
+                        .OrderBy(p => GetName(p.UnifiedIndex, data))
+                        .Select(p => $"{GetName(p.UnifiedIndex, data)}x{p.Count}")
+                        .ToList() ?? new List<string>();
+
+                    var tradeParts = chain.AlliedTradeSparse?
+                        .Where(t => t.TradesRequired > 0)
+                        .OrderBy(t => GetName(t.UnifiedIndex, data))
+                        .Select(t => $"trade({GetName(t.UnifiedIndex, data)}x{t.TradesRequired})")
+                        .ToList() ?? new List<string>();
+
+                    var allCosts = physParts.Concat(tradeParts).ToList();
+                    string costStr = allCosts.Count > 0 ? string.Join(" + ", allCosts) : "(free)";
+
+                    var steps = chain.Steps;
+                    string path = string.Join(" -> ", steps.Select(s => GetName(s.ResultIndex, data)));
+
+                    writer.WriteLine($"  d{chain.Depth}: {costStr} | {path}");
+                }
+                writer.WriteLine();
+            }
+        }
+
+        private static string ChainSortKey(CraftPlanner.RecipeChain chain, SnapshotLoader.BenchData data)
+        {
+            var parts = chain.PhysicalCostSparse?
+                .Where(p => p.Count > 0)
+                .OrderBy(p => GetName(p.UnifiedIndex, data))
+                .Select(p => $"{GetName(p.UnifiedIndex, data)}x{p.Count}")
+                .ToList() ?? new List<string>();
+            return string.Join("+", parts);
         }
 
         private static string GetName(int unifiedIndex, SnapshotLoader.BenchData data)

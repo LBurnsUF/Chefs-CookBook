@@ -144,11 +144,14 @@ namespace CookBook
                     continue;
                 }
 
+                bool isEquipment = resultDef.equipmentIndex != EquipmentIndex.None;
                 int resultIndex = resultDef.itemIndex != ItemIndex.None
                     ? (int)resultDef.itemIndex
-                    : (resultDef.equipmentIndex != EquipmentIndex.None ? itemOffset + (int)resultDef.equipmentIndex : -1);
+                    : (isEquipment ? itemOffset + (int)resultDef.equipmentIndex : -1);
 
                 if (resultIndex == -1) continue;
+
+                int resultCount = isEquipment ? Math.Max(recipeEntry.amountToDrop, 1) : recipeEntry.amountToDrop;
 
                 var rawIndices = new List<int>();
                 bool allIngredientsValid = true;
@@ -202,7 +205,7 @@ namespace CookBook
                 if (rawIndices.Count > 1 && rawIndices.All(x => x == rawIndices[0]))
                 {
                     int a = rawIndices[0];
-                    uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, a, (byte)rawIndices.Count, 0));
+                    uniqueRecipes.Add(new ChefRecipe(resultIndex, resultCount, a, a, (byte)rawIndices.Count, 0));
                 }
                 else if (rawIndices.Count <= 2)
                 {
@@ -211,7 +214,7 @@ namespace CookBook
 
                     if (b == -1)
                     {
-                        uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, a, 2, 0));
+                        uniqueRecipes.Add(new ChefRecipe(resultIndex, resultCount, a, a, 2, 0));
                     }
                     else
                     {
@@ -219,11 +222,11 @@ namespace CookBook
 
                         if (a == b)
                         {
-                            uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, a, 2, 0));
+                            uniqueRecipes.Add(new ChefRecipe(resultIndex, resultCount, a, a, 2, 0));
                         }
                         else
                         {
-                            uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, b, 1, 1));
+                            uniqueRecipes.Add(new ChefRecipe(resultIndex, resultCount, a, b, 1, 1));
                         }
                     }
                 }
@@ -238,9 +241,9 @@ namespace CookBook
                         CanonicalizePair(ref a, ref b);
 
                         if (a == b)
-                            uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, a, 2, 0));
+                            uniqueRecipes.Add(new ChefRecipe(resultIndex, resultCount, a, a, 2, 0));
                         else
-                            uniqueRecipes.Add(new ChefRecipe(resultIndex, recipeEntry.amountToDrop, a, b, 1, 1));
+                            uniqueRecipes.Add(new ChefRecipe(resultIndex, resultCount, a, b, 1, 1));
                     }
                 }
             }

@@ -16,7 +16,7 @@ namespace CookBook
         public const string PluginGUID = PluginAuthor + "." + PluginName;
         public const string PluginAuthor = "rainorshine";
         public const string PluginName = "CookBook";
-        public const string PluginVersion = "1.3.2";
+        public const string PluginVersion = "1.3.3";
 
         internal static ManualLogSource Log;
 
@@ -43,7 +43,7 @@ namespace CookBook
         public static bool IsDroneScrappingEnabled => ConsiderDrones.Value;
         public static bool ShouldBlockCorrupted => PreventCorruptedCrafting.Value;
         public static bool isDebugMode => DebugMode.Value;
-        public static bool isLogCraftMode => DebugMode.Value;
+        public static bool isLogCraftMode => LogCraftMode.Value;
 
         public void Awake()
         {
@@ -327,7 +327,7 @@ namespace CookBook
             {
                 BenchDump.DumpRequested = true;
                 StateController.TakeSnapshot();
-                CookBook.Log.LogWarning("[BenchDump] F9 pressed — dump will fire after next compute.");
+                CookBook.Log.LogWarning("[BenchDump] F9 pressed — snapshot queued.");
             }
             _dumpKeyWasDown = isDown;
         }

@@ -90,6 +90,9 @@ namespace CookBook
                 WriteDerivedIndices(sb);
                 sb.AppendLine(",");
 
+                WriteItemTierMap(sb);
+                sb.AppendLine(",");
+
                 WriteItemNameMap(sb);
                 sb.AppendLine();
 
@@ -348,6 +351,25 @@ namespace CookBook
                 if (!first) sb.AppendLine(",");
                 first = false;
                 sb.Append($"    \"{i}\": \"{EscapeJson(name)}\"");
+            }
+            sb.AppendLine();
+            sb.Append("  }");
+        }
+
+        private static void WriteItemTierMap(StringBuilder sb)
+        {
+            sb.AppendLine("  \"itemTiers\": {");
+            int itemCount = ItemCatalog.itemCount;
+            bool first = true;
+
+            for (int i = 0; i < itemCount; i++)
+            {
+                var def = ItemCatalog.GetItemDef((ItemIndex)i);
+                if (def == null) continue;
+
+                if (!first) sb.AppendLine(",");
+                first = false;
+                sb.Append($"    \"{i}\": {(int)def.tier}");
             }
             sb.AppendLine();
             sb.Append("  }");

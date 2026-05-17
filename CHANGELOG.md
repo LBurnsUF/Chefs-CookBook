@@ -3,6 +3,12 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.3.3 - 5/17/26
+### Fixed
+- Fixed optimization issues introduced in v1.3.2.
+
+---
+
 ## v1.3.2 - 5/15/26
 ### Changed
 - Performance: Reduced worst-case CraftPlanner compute time by ~50% (57ms -> 28ms median at 10x inventory, depth 5).
