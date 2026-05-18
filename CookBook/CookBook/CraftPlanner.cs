@@ -2697,10 +2697,11 @@ namespace CookBook
 
             public int GetFor(int idx)
             {
-                if (idx == I0) return V0;
-                if (idx == I1) return V1;
-                if (idx == I2) return V2;
-                return 0;
+                int sum = 0;
+                if (idx == I0) sum += V0;
+                if (idx == I1) sum += V1;
+                if (idx == I2) sum += V2;
+                return sum;
             }
         }
         internal readonly struct BestCostRecord
@@ -2794,7 +2795,6 @@ namespace CookBook
             internal Ingredient[] PhysicalCostSparse { get; }
             internal DroneRequirement[] DroneCostSparse { get; }
             internal TradeRequirement[] AlliedTradeSparse { get; }
-            private readonly Dictionary<int, int> _cumulativeSurplus;
             internal int ResultIndex { get; }
             internal int ResultCount { get; }
             internal int ResultSurplus { get; }
@@ -2843,11 +2843,6 @@ namespace CookBook
 
                 Delta = new StepDelta3(i0, v0, i1, v1, i2, v2);
 
-                _cumulativeSurplus = new Dictionary<int, int>(3);
-                if (i0 >= 0 && v0 != 0) _cumulativeSurplus[i0] = v0;
-                if (i1 >= 0 && v1 != 0) AccumulateSurplus(_cumulativeSurplus, i1, v1);
-                if (i2 >= 0 && v2 != 0) AccumulateSurplus(_cumulativeSurplus, i2, v2);
-
                 ResultSurplus = GetNetSurplusFor(recipe.ResultIndex);
                 IsBridgeIntermediate = false;
             }
@@ -2881,26 +2876,16 @@ namespace CookBook
 
                 Delta = new StepDelta3(i0, v0, i1, v1, i2, v2);
 
-                _cumulativeSurplus = new Dictionary<int, int>(parent._cumulativeSurplus);
-                if (i0 >= 0 && v0 != 0) AccumulateSurplus(_cumulativeSurplus, i0, v0);
-                if (i1 >= 0 && v1 != 0) AccumulateSurplus(_cumulativeSurplus, i1, v1);
-                if (i2 >= 0 && v2 != 0) AccumulateSurplus(_cumulativeSurplus, i2, v2);
-
                 ResultSurplus = GetNetSurplusFor(next.ResultIndex);
                 IsBridgeIntermediate = isIntermediate;
             }
 
             public int GetNetSurplusFor(int itemIndex)
             {
-                return _cumulativeSurplus.TryGetValue(itemIndex, out int v) ? v : 0;
-            }
-
-            private static void AccumulateSurplus(Dictionary<int, int> map, int idx, int delta)
-            {
-                map.TryGetValue(idx, out int cur);
-                int next = cur + delta;
-                if (next != 0) map[idx] = next;
-                else map.Remove(idx);
+                int sum = 0;
+                for (var n = this; n != null; n = n.Parent)
+                    sum += n.Delta.GetFor(itemIndex);
+                return sum;
             }
 
             public int GetMaxAffordable(InventorySnapshot snap)
