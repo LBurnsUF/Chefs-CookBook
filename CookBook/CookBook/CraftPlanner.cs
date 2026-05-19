@@ -863,6 +863,10 @@ namespace CookBook
             for (int i = 0; i < droneNeedsSorted.Length; i++) candidateTotal += droneNeedsSorted[i].need;
             for (int i = 0; i < tradesSorted.Length; i++) candidateTotal += tradesSorted[i].TradesRequired;
 
+            ulong cPhys = BuildPhysMask(physSortedByIdx);
+            ulong cDrone = BuildDroneMask(droneNeedsSorted);
+            ulong cTrade = BuildTradeMask(tradesSorted);
+
             var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
 
             for (int i = 0; i < entries.Count; i++)
@@ -872,6 +876,8 @@ namespace CookBook
 #if COOKBOOK_PERF
                 PerfProfile.DominatesBucketScans++;
 #endif
+                if ((ex.PhysMask & ~cPhys) != 0 || (ex.DroneMask & ~cDrone) != 0 || (ex.TradeMask & ~cTrade) != 0)
+                    continue;
                 if (Dominates(ex.Phys, ex.Drone, ex.Trades, physSortedByIdx, droneNeedsSorted, tradesSorted, weakOnly: true))
                 {
 #if COOKBOOK_PERF
@@ -901,6 +907,10 @@ namespace CookBook
                 for (int i = 0; i < droneNeedsSorted.Length; i++) candidateTotal += droneNeedsSorted[i].need;
             for (int i = 0; i < tradesSorted.Length; i++) candidateTotal += tradesSorted[i].TradesRequired;
 
+            ulong cPhys = BuildPhysMask(physSortedByIdx);
+            ulong cDrone = droneNeedsSorted != null ? BuildDroneMask(droneNeedsSorted) : 0UL;
+            ulong cTrade = BuildTradeMask(tradesSorted);
+
             var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
 
             for (int i = 0; i < entries.Count; i++)
@@ -910,6 +920,8 @@ namespace CookBook
 #if COOKBOOK_PERF
                 PerfProfile.DominatesBucketScans++;
 #endif
+                if ((ex.PhysMask & ~cPhys) != 0 || (ex.DroneMask & ~cDrone) != 0 || (ex.TradeMask & ~cTrade) != 0)
+                    continue;
                 if (Dominates(ex.Phys, ex.Drone, ex.Trades, physSortedByIdx, droneNeedsSorted, tradesSorted, weakOnly: true))
                 {
 #if COOKBOOK_PERF
@@ -941,6 +953,10 @@ namespace CookBook
                 for (int i = 0; i < droneNeedsSorted.Length; i++) candidateTotal += droneNeedsSorted[i].need;
             for (int i = 0; i < tradesCount; i++) candidateTotal += tradesBuf[i].TradesRequired;
 
+            ulong cPhys = BuildPhysMask(physSortedByIdx);
+            ulong cDrone = droneNeedsSorted != null ? BuildDroneMask(droneNeedsSorted) : 0UL;
+            ulong cTrade = BuildTradeMask(tradesBuf, tradesCount);
+
             for (int i = 0; i < entries.Count; i++)
             {
                 var ex = entries[i];
@@ -948,6 +964,8 @@ namespace CookBook
 #if COOKBOOK_PERF
                 PerfProfile.DominatesBucketScans++;
 #endif
+                if ((ex.PhysMask & ~cPhys) != 0 || (ex.DroneMask & ~cDrone) != 0 || (ex.TradeMask & ~cTrade) != 0)
+                    continue;
                 if (DominatesWithTradeSlice(ex.Phys, ex.Drone, ex.Trades,
                         physSortedByIdx, droneNeedsSorted, tradesBuf, tradesCount))
                 {
@@ -966,6 +984,8 @@ namespace CookBook
             {
                 var ex = entries[i];
                 if (ex.TotalCost < candidateTotal) break;
+                if ((cPhys & ~ex.PhysMask) != 0 || (cDrone & ~ex.DroneMask) != 0 || (cTrade & ~ex.TradeMask) != 0)
+                    continue;
                 if (Dominates(physSortedByIdx, droneNeedsSorted, snapshotTrades,
                               ex.Phys, ex.Drone, ex.Trades))
                 {
@@ -1413,6 +1433,11 @@ namespace CookBook
             var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
             int candidateTotal = VirtualTotalCost(basePhys, baseLen, add0Cnt, add1Cnt);
 
+            ulong cPhys = BuildVirtualPhysMask(basePhys, baseLen, add0Idx, add0Cnt, add1Idx, add1Cnt);
+            ulong cDrone = BuildDroneMask(_droneCollapsedScratch, _droneCollapsedCount);
+            var tradeBufRef = _tradeScratchIsAlias ? _tradeScratchAlias : _tradeScratch;
+            ulong cTrade = BuildTradeMask(tradeBufRef, _tradeScratchCount);
+
             for (int i = 0; i < entries.Count; i++)
             {
                 var ex = entries[i];
@@ -1420,6 +1445,8 @@ namespace CookBook
 #if COOKBOOK_PERF
                 PerfProfile.DominatesBucketScans++;
 #endif
+                if ((ex.PhysMask & ~cPhys) != 0 || (ex.DroneMask & ~cDrone) != 0 || (ex.TradeMask & ~cTrade) != 0)
+                    continue;
                 if (DominatesAgainstVirtual(ex.Phys, ex.Drone, ex.Trades,
                         basePhys, baseLen, add0Idx, add0Cnt, add1Idx, add1Cnt))
                 {
@@ -1435,10 +1462,16 @@ namespace CookBook
             var drone = SnapshotDroneScratch();
             var trades = SnapshotTradeScratch();
 
+            ulong mPhys = BuildPhysMask(phys);
+            ulong mDrone = BuildDroneMask(drone);
+            ulong mTrade = BuildTradeMask(trades);
+
             for (int i = entries.Count - 1; i >= 0; i--)
             {
                 var ex = entries[i];
                 if (ex.TotalCost < candidateTotal) break;
+                if ((mPhys & ~ex.PhysMask) != 0 || (mDrone & ~ex.DroneMask) != 0 || (mTrade & ~ex.TradeMask) != 0)
+                    continue;
                 if (Dominates(phys, drone, trades, ex.Phys, ex.Drone, ex.Trades))
                 {
 #if COOKBOOK_PERF
@@ -1564,6 +1597,11 @@ namespace CookBook
             var entries = GetFrontierEntries(resultIdx, resultCount, create: true);
             int candidateTotal = ScratchTotalCost();
 
+            ulong cPhys = BuildPhysMask(_physScratch, _physScratchCount);
+            ulong cDrone = BuildDroneMask(_droneCollapsedScratch, _droneCollapsedCount);
+            var tradeBufRef = _tradeScratchIsAlias ? _tradeScratchAlias : _tradeScratch;
+            ulong cTrade = BuildTradeMask(tradeBufRef, _tradeScratchCount);
+
             for (int i = 0; i < entries.Count; i++)
             {
                 var ex = entries[i];
@@ -1571,6 +1609,8 @@ namespace CookBook
 #if COOKBOOK_PERF
                 PerfProfile.DominatesBucketScans++;
 #endif
+                if ((ex.PhysMask & ~cPhys) != 0 || (ex.DroneMask & ~cDrone) != 0 || (ex.TradeMask & ~cTrade) != 0)
+                    continue;
                 if (DominatesAgainstScratch(ex.Phys, ex.Drone, ex.Trades))
                 {
 #if COOKBOOK_PERF
@@ -1588,6 +1628,8 @@ namespace CookBook
             {
                 var ex = entries[i];
                 if (ex.TotalCost < candidateTotal) break;
+                if ((cPhys & ~ex.PhysMask) != 0 || (cDrone & ~ex.DroneMask) != 0 || (cTrade & ~ex.TradeMask) != 0)
+                    continue;
                 if (Dominates(phys, drone, trades, ex.Phys, ex.Drone, ex.Trades))
                 {
 #if COOKBOOK_PERF
@@ -2710,6 +2752,9 @@ namespace CookBook
             public readonly (int scrapIdx, int need)[] Drone;
             public readonly TradeRequirement[] Trades;
             public readonly int TotalCost;
+            public readonly ulong PhysMask;
+            public readonly ulong DroneMask;
+            public readonly ulong TradeMask;
 
             public BestCostRecord(Ingredient[] phys, (int scrapIdx, int need)[] drone, TradeRequirement[] trades)
             {
@@ -2717,6 +2762,9 @@ namespace CookBook
                 Drone = drone ?? Array.Empty<(int, int)>();
                 Trades = trades ?? Array.Empty<TradeRequirement>();
                 TotalCost = SumCost(Phys, Drone, Trades);
+                PhysMask = BuildPhysMask(Phys);
+                DroneMask = BuildDroneMask(Drone);
+                TradeMask = BuildTradeMask(Trades);
             }
 
             private static int SumCost(Ingredient[] phys, (int scrapIdx, int need)[] drone, TradeRequirement[] trades)
@@ -2727,6 +2775,70 @@ namespace CookBook
                 for (int i = 0; i < trades.Length; i++) sum += trades[i].TradesRequired;
                 return sum;
             }
+        }
+
+        private static ulong BuildPhysMask(Ingredient[] phys)
+        {
+            ulong mask = 0;
+            for (int i = 0; i < phys.Length; i++)
+                if (phys[i].Count > 0) mask |= 1UL << (phys[i].UnifiedIndex & 63);
+            return mask;
+        }
+
+        private static ulong BuildPhysMask(Ingredient[] phys, int len)
+        {
+            ulong mask = 0;
+            for (int i = 0; i < len; i++)
+                if (phys[i].Count > 0) mask |= 1UL << (phys[i].UnifiedIndex & 63);
+            return mask;
+        }
+
+        private static ulong BuildDroneMask((int scrapIdx, int need)[] drone)
+        {
+            ulong mask = 0;
+            for (int i = 0; i < drone.Length; i++)
+                if (drone[i].need > 0) mask |= 1UL << (drone[i].scrapIdx & 63);
+            return mask;
+        }
+
+        private static ulong BuildDroneMask((int scrapIdx, int need)[] drone, int len)
+        {
+            ulong mask = 0;
+            for (int i = 0; i < len; i++)
+                if (drone[i].need > 0) mask |= 1UL << (drone[i].scrapIdx & 63);
+            return mask;
+        }
+
+        private static ulong BuildTradeMask(TradeRequirement[] trades)
+        {
+            ulong mask = 0;
+            for (int i = 0; i < trades.Length; i++)
+                if (trades[i].TradesRequired > 0)
+                    mask |= 1UL << (HashTradeKey(trades[i]) & 63);
+            return mask;
+        }
+
+        private static ulong BuildTradeMask(TradeRequirement[] trades, int len)
+        {
+            ulong mask = 0;
+            for (int i = 0; i < len; i++)
+                if (trades[i].TradesRequired > 0)
+                    mask |= 1UL << (HashTradeKey(trades[i]) & 63);
+            return mask;
+        }
+
+        private static int HashTradeKey(in TradeRequirement t)
+        {
+            long donorId = t.Donor ? t.Donor.netId.Value : 0L;
+            return unchecked((int)donorId * 397) ^ t.UnifiedIndex;
+        }
+
+        private static ulong BuildVirtualPhysMask(Ingredient[] basePhys, int baseLen, int add0Idx, int add0Cnt, int add1Idx, int add1Cnt)
+        {
+            ulong mask = BuildPhysMask(basePhys, baseLen);
+            if (add0Cnt > 0) mask |= 1UL << (add0Idx & 63);
+            if (add1Cnt > 0) mask |= 1UL << (add1Idx & 63);
+            return mask;
         }
         private readonly struct DroneKey : IEquatable<DroneKey>
         {
