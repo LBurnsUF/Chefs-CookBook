@@ -148,7 +148,7 @@ namespace CookBook
                 var list = _frontierByIdx[resultIdx];
                 if (list == null && create)
                 {
-                    list = new List<BestCostRecord>(4);
+                    list = new List<BestCostRecord>(16);
                     _frontierByIdx[resultIdx] = list;
                 }
                 return list;
@@ -157,7 +157,7 @@ namespace CookBook
             if (_frontierOverflow.TryGetValue(key, out var entries))
                 return entries;
             if (!create) return null;
-            entries = new List<BestCostRecord>(4);
+            entries = new List<BestCostRecord>(16);
             _frontierOverflow[key] = entries;
             return entries;
         }
@@ -1218,32 +1218,57 @@ namespace CookBook
 
         private static bool DominatesPhys(Ingredient[] a, Ingredient[] b, ref bool strict)
         {
+#if COOKBOOK_PERF
+            PerfProfile.MergePhysCalls++;
+#endif
             int i = 0, j = 0;
 
             while (i < a.Length || j < b.Length)
             {
+#if COOKBOOK_PERF
+                PerfProfile.MergePhysIters++;
+#endif
                 int ai = (i < a.Length) ? a[i].UnifiedIndex : int.MaxValue;
                 int bi = (j < b.Length) ? b[j].UnifiedIndex : int.MaxValue;
 
                 if (ai == bi)
                 {
+#if COOKBOOK_PERF
+                    PerfProfile.MergePhysMatch++;
+#endif
                     int av = a[i].Count;
                     int bv = b[j].Count;
 
-                    if (av > bv) return false;
+                    if (av > bv)
+                    {
+#if COOKBOOK_PERF
+                        PerfProfile.MergePhysEarlyRet++;
+#endif
+                        return false;
+                    }
                     if (av < bv) strict = true;
 
                     i++; j++;
                 }
                 else if (ai < bi)
                 {
-                    // Key exists in A but not in B
-                    if (a[i].Count > 0) return false;
+#if COOKBOOK_PERF
+                    PerfProfile.MergePhysAdvA++;
+#endif
+                    if (a[i].Count > 0)
+                    {
+#if COOKBOOK_PERF
+                        PerfProfile.MergePhysEarlyRet++;
+#endif
+                        return false;
+                    }
                     i++;
                 }
-                else // bi < ai
+                else
                 {
-                    // Key exists in B but not in A
+#if COOKBOOK_PERF
+                    PerfProfile.MergePhysAdvB++;
+#endif
                     if (b[j].Count > 0) strict = true;
                     j++;
                 }
@@ -1487,15 +1512,16 @@ namespace CookBook
 
         private static void InsertSorted(List<BestCostRecord> entries, BestCostRecord record)
         {
-            for (int i = 0; i < entries.Count; i++)
+            int lo = 0, hi = entries.Count - 1;
+            while (lo <= hi)
             {
-                if (entries[i].TotalCost > record.TotalCost)
-                {
-                    entries.Insert(i, record);
-                    return;
-                }
+                int mid = (lo + hi) >>> 1;
+                if (entries[mid].TotalCost <= record.TotalCost)
+                    lo = mid + 1;
+                else
+                    hi = mid - 1;
             }
-            entries.Add(record);
+            entries.Insert(lo, record);
         }
 
         // ------------ Scratch-based dominance (deferred allocation) ------------
@@ -1523,27 +1549,54 @@ namespace CookBook
 
         private static bool DominatesPhysSlice(Ingredient[] a, Ingredient[] b, int bLen, ref bool strict)
         {
+#if COOKBOOK_PERF
+            PerfProfile.MergePhysCalls++;
+#endif
             int i = 0, j = 0;
             while (i < a.Length || j < bLen)
             {
+#if COOKBOOK_PERF
+                PerfProfile.MergePhysIters++;
+#endif
                 int ai = (i < a.Length) ? a[i].UnifiedIndex : int.MaxValue;
                 int bi = (j < bLen) ? b[j].UnifiedIndex : int.MaxValue;
 
                 if (ai == bi)
                 {
+#if COOKBOOK_PERF
+                    PerfProfile.MergePhysMatch++;
+#endif
                     int av = a[i].Count;
                     int bv = b[j].Count;
-                    if (av > bv) return false;
+                    if (av > bv)
+                    {
+#if COOKBOOK_PERF
+                        PerfProfile.MergePhysEarlyRet++;
+#endif
+                        return false;
+                    }
                     if (av < bv) strict = true;
                     i++; j++;
                 }
                 else if (ai < bi)
                 {
-                    if (a[i].Count > 0) return false;
+#if COOKBOOK_PERF
+                    PerfProfile.MergePhysAdvA++;
+#endif
+                    if (a[i].Count > 0)
+                    {
+#if COOKBOOK_PERF
+                        PerfProfile.MergePhysEarlyRet++;
+#endif
+                        return false;
+                    }
                     i++;
                 }
                 else
                 {
+#if COOKBOOK_PERF
+                    PerfProfile.MergePhysAdvB++;
+#endif
                     if (b[j].Count > 0) strict = true;
                     j++;
                 }
@@ -2777,53 +2830,97 @@ namespace CookBook
             }
         }
 
+        private static int FibHash(int idx) => (int)((uint)idx * 2654435769u) >> 26;
+
         private static ulong BuildPhysMask(Ingredient[] phys)
         {
+#if COOKBOOK_PERF
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             ulong mask = 0;
             for (int i = 0; i < phys.Length; i++)
-                if (phys[i].Count > 0) mask |= 1UL << (phys[i].UnifiedIndex & 63);
+                if (phys[i].Count > 0) mask |= 1UL << (FibHash(phys[i].UnifiedIndex));
+#if COOKBOOK_PERF
+            PerfProfile.MaskBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            PerfProfile.MaskBuildCount++;
+#endif
             return mask;
         }
 
         private static ulong BuildPhysMask(Ingredient[] phys, int len)
         {
+#if COOKBOOK_PERF
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             ulong mask = 0;
             for (int i = 0; i < len; i++)
-                if (phys[i].Count > 0) mask |= 1UL << (phys[i].UnifiedIndex & 63);
+                if (phys[i].Count > 0) mask |= 1UL << (FibHash(phys[i].UnifiedIndex));
+#if COOKBOOK_PERF
+            PerfProfile.MaskBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            PerfProfile.MaskBuildCount++;
+#endif
             return mask;
         }
 
         private static ulong BuildDroneMask((int scrapIdx, int need)[] drone)
         {
+#if COOKBOOK_PERF
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             ulong mask = 0;
             for (int i = 0; i < drone.Length; i++)
-                if (drone[i].need > 0) mask |= 1UL << (drone[i].scrapIdx & 63);
+                if (drone[i].need > 0) mask |= 1UL << (FibHash(drone[i].scrapIdx));
+#if COOKBOOK_PERF
+            PerfProfile.MaskBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            PerfProfile.MaskBuildCount++;
+#endif
             return mask;
         }
 
         private static ulong BuildDroneMask((int scrapIdx, int need)[] drone, int len)
         {
+#if COOKBOOK_PERF
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             ulong mask = 0;
             for (int i = 0; i < len; i++)
-                if (drone[i].need > 0) mask |= 1UL << (drone[i].scrapIdx & 63);
+                if (drone[i].need > 0) mask |= 1UL << (FibHash(drone[i].scrapIdx));
+#if COOKBOOK_PERF
+            PerfProfile.MaskBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            PerfProfile.MaskBuildCount++;
+#endif
             return mask;
         }
 
         private static ulong BuildTradeMask(TradeRequirement[] trades)
         {
+#if COOKBOOK_PERF
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             ulong mask = 0;
             for (int i = 0; i < trades.Length; i++)
                 if (trades[i].TradesRequired > 0)
-                    mask |= 1UL << (HashTradeKey(trades[i]) & 63);
+                    mask |= 1UL << (FibHash(HashTradeKey(trades[i])));
+#if COOKBOOK_PERF
+            PerfProfile.MaskBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            PerfProfile.MaskBuildCount++;
+#endif
             return mask;
         }
 
         private static ulong BuildTradeMask(TradeRequirement[] trades, int len)
         {
+#if COOKBOOK_PERF
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+#endif
             ulong mask = 0;
             for (int i = 0; i < len; i++)
                 if (trades[i].TradesRequired > 0)
-                    mask |= 1UL << (HashTradeKey(trades[i]) & 63);
+                    mask |= 1UL << (FibHash(HashTradeKey(trades[i])));
+#if COOKBOOK_PERF
+            PerfProfile.MaskBuildTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            PerfProfile.MaskBuildCount++;
+#endif
             return mask;
         }
 
@@ -2836,8 +2933,8 @@ namespace CookBook
         private static ulong BuildVirtualPhysMask(Ingredient[] basePhys, int baseLen, int add0Idx, int add0Cnt, int add1Idx, int add1Cnt)
         {
             ulong mask = BuildPhysMask(basePhys, baseLen);
-            if (add0Cnt > 0) mask |= 1UL << (add0Idx & 63);
-            if (add1Cnt > 0) mask |= 1UL << (add1Idx & 63);
+            if (add0Cnt > 0) mask |= 1UL << (FibHash(add0Idx));
+            if (add1Cnt > 0) mask |= 1UL << (FibHash(add1Idx));
             return mask;
         }
         private readonly struct DroneKey : IEquatable<DroneKey>

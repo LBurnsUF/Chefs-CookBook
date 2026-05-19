@@ -14,15 +14,17 @@ namespace CookBook.Bench
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("Usage: CookBook.Bench <snapshot.json> [inventory_multiplier] [max_depth]");
+                Console.WriteLine("Usage: CookBook.Bench <snapshot.json> [inventory_multiplier] [max_depth] [runs]");
                 Console.WriteLine("  inventory_multiplier: scale all physicalStacks by this factor (default: 1)");
                 Console.WriteLine("  max_depth: override max chain depth, or 0 to sweep 1..snapshot_depth (default: snapshot value)");
+                Console.WriteLine("  runs: number of timed iterations (default: 10)");
                 return;
             }
 
             string snapshotPath = args[0];
             int multiplier = args.Length >= 2 ? int.Parse(args[1]) : 1;
             int depthArg = args.Length >= 3 ? int.Parse(args[2]) : -1;
+            int runsArg = args.Length >= 4 ? int.Parse(args[3]) : 10;
 
             var data = SnapshotLoader.Load(snapshotPath);
 
@@ -87,16 +89,16 @@ namespace CookBook.Bench
                 Console.WriteLine($"{'=',-60}");
 
                 for (int d = 1; d <= snapshotDepth; d++)
-                    RunBench(data, stacks, physMask, d, multiplier, synth);
+                    RunBench(data, stacks, physMask, d, multiplier, synth, runsArg);
             }
             else
             {
                 int depth = depthArg > 0 ? depthArg : snapshotDepth;
-                RunBench(data, stacks, physMask, depth, multiplier, synth);
+                RunBench(data, stacks, physMask, depth, multiplier, synth, runsArg);
             }
         }
 
-        private static void RunBench(SnapshotLoader.BenchData data, int[] stacks, ulong[] physMask, int depth, int multiplier, SyntheticData synth)
+        private static void RunBench(SnapshotLoader.BenchData data, int[] stacks, ulong[] physMask, int depth, int multiplier, SyntheticData synth, int runs = 10)
         {
             var snapshot = new InventorySnapshot(
                 physical: stacks,
@@ -114,7 +116,6 @@ namespace CookBook.Bench
             );
 
             var log = new ManualLogSource("Bench");
-            int runs = 10;
 
             Console.WriteLine($"\n--- Depth {depth} ({multiplier}x inventory, {runs} runs) ---");
 

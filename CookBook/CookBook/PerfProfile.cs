@@ -43,6 +43,18 @@ namespace CookBook
         public static int FrontierEvictions;
         public static int UniqueResultIndices;
 
+        // Merge-scan branch distribution counters (DominatesPhys + DominatesPhysSlice)
+        public static long MergePhysCalls;
+        public static long MergePhysIters;
+        public static long MergePhysMatch;    // ai == bi
+        public static long MergePhysAdvA;     // ai < bi  (a has key b doesn't)
+        public static long MergePhysAdvB;     // bi < ai  (b has key a doesn't)
+        public static long MergePhysEarlyRet; // returned false mid-loop
+
+        // Hash cost tracking
+        public static long MaskBuildTicks;
+        public static int MaskBuildCount;
+
         private static long NowTicks() => Stopwatch.GetTimestamp();
 
         public static void Reset()
@@ -62,6 +74,14 @@ namespace CookBook
             DominatesBucketScans = 0;
             FrontierEvictions = 0;
             UniqueResultIndices = 0;
+            MergePhysCalls = 0;
+            MergePhysIters = 0;
+            MergePhysMatch = 0;
+            MergePhysAdvA = 0;
+            MergePhysAdvB = 0;
+            MergePhysEarlyRet = 0;
+            MaskBuildTicks = 0;
+            MaskBuildCount = 0;
         }
 
         // Per-thread stack of active scopes
@@ -204,6 +224,21 @@ namespace CookBook
                 double maxMs = maxRaw * invFreqMs;
 
                 log.LogInfo($"[Perf] {(Region)idx,-20} inc={incMs,8:F2}ms ({pctInc,6:F2}%)  exc={excMs,8:F2}ms ({pctExc,6:F2}%)  calls={calls}  min={minMs:F4}ms  max={maxMs:F4}ms");
+            }
+
+            if (MergePhysIters > 0)
+            {
+                double pM = MergePhysMatch * 100.0 / MergePhysIters;
+                double pA = MergePhysAdvA * 100.0 / MergePhysIters;
+                double pB = MergePhysAdvB * 100.0 / MergePhysIters;
+                log.LogInfo($"[Perf] MergePhys calls={MergePhysCalls}  iters={MergePhysIters}  match={pM:F1}%  advA={pA:F1}%  advB={pB:F1}%  earlyRet={MergePhysEarlyRet}");
+            }
+
+            if (MaskBuildCount > 0)
+            {
+                double maskMs = MaskBuildTicks * invFreqMs;
+                double pctMask = (double)MaskBuildTicks * 100.0 / total;
+                log.LogInfo($"[Perf] MaskBuild: {maskMs:F3}ms ({pctMask:F2}%)  calls={MaskBuildCount}");
             }
 
         }

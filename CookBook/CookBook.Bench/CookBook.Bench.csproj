@@ -5,7 +5,8 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<LangVersion>preview</LangVersion>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-		<DefineConstants>$(DefineConstants);COOKBOOK_BENCH;COOKBOOK_PERF</DefineConstants>
+		<DefineConstants>$(DefineConstants);COOKBOOK_BENCH</DefineConstants>
+		<DefineConstants Condition="'$(Perf)'!='0'">$(DefineConstants);COOKBOOK_PERF</DefineConstants>
 	</PropertyGroup>
 
 	<ItemGroup>
