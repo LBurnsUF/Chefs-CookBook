@@ -365,3 +365,13 @@ FodyWeavers.xsd
 /Unity/
 /Spy
 /Spy
+*.txt
+*.json
+*.nettrace
+*.css
+*.html
+*.exe
+*.dll
+*.js
+/CookBook.Viz_backup
+CookBook/CookBook/IconDumper.cs
