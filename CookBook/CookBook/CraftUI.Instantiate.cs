@@ -41,21 +41,7 @@ namespace CookBook
             if (runtime.PathsText != null) runtime.PathsText.text = $"Paths: {entry.Chains.Count}";
 
             // ---------------- ItemIcon ----------------
-            if (runtime.ResultIcon != null)
-            {
-                Sprite iconSprite = GetIcon(entry.ResultIndex);
-
-                if (iconSprite != null)
-                {
-                    runtime.ResultIcon.sprite = iconSprite;
-                    runtime.ResultIcon.color = Color.white;
-                }
-                else
-                {
-                    runtime.ResultIcon.sprite = null;
-                    runtime.ResultIcon.color = new Color(1f, 1f, 1f, 0.1f);
-                }
-            }
+            BindPickupIcon(runtime.ResultIcon, entry.ResultIndex);
 
             // ---------------- Stack Text ----------------
             if (runtime.ResultStackText != null)
@@ -95,8 +81,8 @@ namespace CookBook
             {
                 foreach (var ingredient in chain.PhysicalCostSparse)
                 {
-                    Sprite icon = GetIcon(ingredient.UnifiedIndex);
-                    if (icon != null) InstantiateSlot(_ingredientSlotTemplate, runtime.VisualRect, icon, ingredient.Count);
+                    var slot = InstantiateSlot(_ingredientSlotTemplate, runtime.VisualRect, null, ingredient.Count);
+                    if (slot) BindPickupIcon(slot.transform.Find("Icon")?.GetComponent<Image>(), ingredient.UnifiedIndex);
                 }
             }
 
@@ -104,8 +90,8 @@ namespace CookBook
             {
                 foreach (var trade in chain.AlliedTradeSparse)
                 {
-                    Sprite icon = GetIcon(trade.UnifiedIndex);
-                    if (icon != null) InstantiateSlot(_tradeSlotTemplate, runtime.VisualRect, icon, trade.TradesRequired);
+                    var slot = InstantiateSlot(_tradeSlotTemplate, runtime.VisualRect, null, trade.TradesRequired);
+                    if (slot) BindPickupIcon(slot.transform.Find("Icon")?.GetComponent<Image>(), trade.UnifiedIndex);
                 }
             }
 
@@ -132,9 +118,9 @@ namespace CookBook
             return pathRowGO;
         }
 
-        internal static void InstantiateSlot(GameObject template, Transform parentrow, Sprite icon, int count)
+        internal static GameObject InstantiateSlot(GameObject template, Transform parentrow, Sprite icon, int count)
         {
-            if (template == null) return;
+            if (template == null) return null;
             GameObject slotGO = UnityEngine.Object.Instantiate(template, parentrow);
             slotGO.SetActive(true);
 
@@ -147,6 +133,7 @@ namespace CookBook
                 stackTmp.text = count > 1 ? count.ToString() : string.Empty;
                 stackTmp.gameObject.SetActive(count > 1);
             }
+            return slotGO;
         }
 
         internal static GameObject InstantiateLayer(GameObject template, Transform parent)

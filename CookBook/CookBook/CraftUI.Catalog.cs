@@ -1,4 +1,7 @@
 ﻿using RoR2;
+using RoR2.UI;
+using RoR2.ContentManagement;
+using UnityEngine.UI;
 using UnityEngine;
 using static CookBook.CraftPlanner;
 
@@ -34,6 +37,56 @@ namespace CookBook
 
             if (sprite != null) _iconCache[unifiedIndex] = sprite;
             return sprite;
+        }
+
+        internal static void BindPickupIcon(Image image, int unifiedIndex)
+        {
+            if (!image) return;
+
+            // Configure while inactive so OnEnable cannot initialize a new loader
+            // before its renderer is assigned. This only hides the icon child.
+            bool wasActive = image.gameObject.activeSelf;
+            image.gameObject.SetActive(false);
+            try
+            {
+                var asyncImage = image.gameObject.GetComponent<AsyncImage>();
+                if (!asyncImage) asyncImage = image.gameObject.AddComponent<AsyncImage>();
+                asyncImage.renderer = image;
+                asyncImage.loadOnAssigned = true;
+                asyncImage.disableWhileLoading = true;
+                asyncImage.unloadType = AsyncReferenceHandleUnloadType.AtWill;
+                asyncImage.EnsureInitialization(true);
+
+                // Rebinding must retire the previous request even when the next
+                // icon is already loaded or has no corresponding pickup.
+                asyncImage.Clear();
+                image.sprite = null;
+                image.color = Color.white;
+                image.enabled = true;
+
+                Sprite sprite = GetIcon(unifiedIndex);
+                if (sprite)
+                {
+                    asyncImage.SetImage(sprite);
+                    return;
+                }
+
+                PickupIndex pickupIndex = unifiedIndex < ItemCatalog.itemCount
+                    ? PickupCatalog.FindPickupIndex((ItemIndex)unifiedIndex)
+                    : PickupCatalog.FindPickupIndex((EquipmentIndex)(unifiedIndex - ItemCatalog.itemCount));
+                var pickup = PickupCatalog.GetPickupDef(pickupIndex);
+                if (pickup == null)
+                {
+                    image.enabled = false;
+                    return;
+                }
+
+                asyncImage.SetAssetOrDirectReference(pickup);
+            }
+            finally
+            {
+                image.gameObject.SetActive(wasActive);
+            }
         }
 
         internal static Sprite GetDroneIcon(DroneIndex droneIndex)
