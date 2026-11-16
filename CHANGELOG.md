@@ -4,15 +4,22 @@ Dates are listed in `MM/DD/YY` format.
 ---
 
 ## v1.3.4 - 11/16/26
+### Added
+- Repeat count stepper.
+- Controller support (tentative, untested, report issues on [GitHub](https://github.com/LBurnsUF/Chefs-CookBook/issues)).
 ### Fixed
-- Fixed missing item, equipment, and drone icons in the CookBook panel after the game v1.5.0 update (icons moved to Addressables).
-- Fixed recipes whose ingredients outweigh their result never showing (e.g. Of One Mind, Bison Steak, Delicate Watch, Seed of Life).
-- Fixed recipes that consume their own result never showing (e.g. white scrap recipes, PSG + Buckler -> Dampener -> 2x PSG).
-- Fixed equipment retooling cycling to the wrong set when Functional Couplers were temporarily disabled.
+- Missing icons after game v1.5.0.
+- Net-negative and self-consuming recipes not showing.
+- Coupler retool picking the wrong set.
+- Repeat craft only crafting once at max.
+- Selection highlight drawing over search bar and craft button.
+- Buttons staying highlighted after mouse-off.
 ### Changed
-- Efficiency gate now measures input and output net of result-type items, with a floor at the final recipe's own ingredient cost.
-- Migrated off deprecated equipment APIs (`EquipmentLocation`, `GetActiveEquipmentSetInSlot`, `accessibleEquipmentSetCount`).
-- Equipment in inaccessible sets is no longer counted as available for crafting.
+- Buttons use vanilla style.
+- Selected path color matches vanilla.
+- Efficiency gate counts net result items.
+- Migrated off deprecated equipment APIs.
+- Inaccessible equipment sets no longer count as available.
 
 ---
 
