@@ -29,6 +29,27 @@ namespace CookBook
             }
         }
 
+        // read leading digits, ignores max suffix
+        internal static int ParseRepeatCount()
+        {
+            string s = _repeatInputField ? _repeatInputField.text : null;
+            if (string.IsNullOrEmpty(s)) return 1;
+            int n = 0, i = 0;
+            while (i < s.Length && char.IsDigit(s[i]) && n < 100000) n = n * 10 + (s[i++] - '0');
+            return i == 0 ? 1 : n;
+        }
+
+        internal static void StepRepeatCount(int delta)
+        {
+            if (_selectedChainData == null || !_repeatInputField) return;
+            if (!TryGetSnapshot(out var snap)) return;
+            int max = _selectedChainData.GetMaxAffordable(snap);
+            if (max <= 0) return;
+
+            int next = Mathf.Clamp(ParseRepeatCount() + delta, 1, max);
+            _repeatInputField.text = next >= max ? $"{max} (max)" : next.ToString();
+        }
+
         internal static void OnPathSelected(PathRowRuntime clickedPath)
         {
             _currentHoveredPath = clickedPath;
@@ -50,9 +71,15 @@ namespace CookBook
             if (_globalCraftButton)
             {
                 _globalCraftButton.interactable = true;
-                _globalCraftButtonImage.color = new Color32(206, 198, 143, 200);
+                if (!_globalCraftButtonIsCanon)
+                {
+                    _globalCraftButtonImage.color = new Color32(206, 198, 143, 255);
+                    _globalCraftButtonText.color = new Color32(26, 22, 22, 255);
+                }
                 _globalCraftButtonText.text = "Combine";
             }
+
+            RebuildNavigation();
 
             if (!TryGetSnapshot(out var snap)) return;
             int max = clickedPath.Chain.GetMaxAffordable(_snap);
@@ -65,7 +92,7 @@ namespace CookBook
         internal static void OnGlobalCraftButtonClicked()
         {
             if (_selectedChainData == null) return;
-            if (!int.TryParse(_repeatInputField.text, out int count)) count = 1;
+            int count = ParseRepeatCount();
 
             if (!TryGetSnapshot(out var snap)) return;
             int max = _selectedChainData.GetMaxAffordable(_snap);
@@ -91,6 +118,7 @@ namespace CookBook
             {
                 CollapseRow(runtime);
                 _openRow = null;
+                RebuildNavigation();
                 return;
             }
 
@@ -98,6 +126,7 @@ namespace CookBook
 
             ExpandRow(runtime);
             _openRow = runtime;
+            RebuildNavigation();
         }
 
         internal static void ExpandRow(RecipeRowRuntime runtime)
@@ -172,9 +201,12 @@ namespace CookBook
             if (_globalCraftButton)
             {
                 _globalCraftButton.interactable = false;
-                _globalCraftButtonImage.color = new Color32(26, 22, 22, 100);
+                if (!_globalCraftButtonIsCanon)
+                {
+                    _globalCraftButtonImage.color = new Color32(26, 22, 22, 100);
+                    _globalCraftButtonText.color = new Color32(100, 100, 100, 255);
+                }
                 _globalCraftButtonText.text = "Select a Recipe";
-                _globalCraftButtonText.color = new Color32(100, 100, 100, 255);
             }
 
             if (_repeatInputField)
@@ -182,6 +214,8 @@ namespace CookBook
                 _repeatInputField.text = string.Empty;
                 if (_repeatInputField.placeholder is TextMeshProUGUI ph) ph.text = "";
             }
+
+            RebuildNavigation();
         }
 
 
@@ -213,6 +247,7 @@ namespace CookBook
         internal static void RefreshUIVisibility()
         {
             RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField?.text);
+            RebuildNavigation();
 
             if (_currentController != null)
             {

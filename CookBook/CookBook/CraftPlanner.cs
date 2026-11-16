@@ -1,4 +1,4 @@
-using BepInEx.Logging;
+﻿using BepInEx.Logging;
 using RoR2;
 using System;
 using System.Collections.Generic;
@@ -551,7 +551,8 @@ namespace CookBook
                             })
                             .Where(c =>
                             {
-                                bool ok = (c.ResultSurplus == c.ResultCount);
+                                // self-consuming chains ok, 0 < surplus <= count
+                                bool ok = c.ResultSurplus > 0 && c.ResultSurplus <= c.ResultCount;
                                 if (!ok) badSurplus++;
                                 return ok;
                             })
@@ -834,11 +835,31 @@ namespace CookBook
             if (chain.IsBridgeIntermediate)
                 return false;
 
-            int inputWeight = GetWeightedCost(chain);
+            int inputWeight = GetWeightedCost(chain, chain.ResultIndex);
             int value = chain.ResultSurplus * GetItemWeight(chain.ResultIndex);
 
+            return ExceedsEfficiencyBudget(inputWeight, value, chain.LastStep);
+        }
+
+        /// <summary>
+        /// inefficient if input > max(2 * value, face cost of lastStep), both sides net of result-type items
+        /// face cost floor lets lossy recipes through (Pearl + broken Watch, aspects)
+        /// </summary>
+        private static bool ExceedsEfficiencyBudget(int inputWeight, int value, ChefRecipe lastStep)
+        {
             if (value <= 0) return true;
-            return inputWeight > value * 2;
+            int budget = Math.Max(value * 2, GetRecipeFaceCost(lastStep));
+            return inputWeight > budget;
+        }
+
+        // weighted ingA + ingB, 0 for trades
+        private static int GetRecipeFaceCost(ChefRecipe recipe)
+        {
+            if (recipe == null) return 0;
+            int cost = 0;
+            if (recipe.IngA >= 0 && recipe.CountA > 0) cost += GetItemWeight(recipe.IngA) * recipe.CountA;
+            if (recipe.HasB && recipe.IngB >= 0) cost += GetItemWeight(recipe.IngB) * recipe.CountB;
+            return cost;
         }
 
         // ------------------- Dominance Gating ------------------
@@ -1433,11 +1454,13 @@ namespace CookBook
         private bool IsVirtualInefficient(RecipeChain existingChain, ChefRecipe nextRecipe,
             Ingredient[] basePhys, int baseLen, int add0Idx, int add0Cnt, int add1Idx, int add1Cnt)
         {
+            int resultIdx = nextRecipe.ResultIndex;
             int inputWeight = 0;
             for (int i = 0; i < baseLen; i++)
-                inputWeight += GetItemWeight(basePhys[i].UnifiedIndex) * basePhys[i].Count;
-            if (add0Cnt > 0) inputWeight += GetItemWeight(add0Idx) * add0Cnt;
-            if (add1Cnt > 0) inputWeight += GetItemWeight(add1Idx) * add1Cnt;
+                if (basePhys[i].UnifiedIndex != resultIdx)
+                    inputWeight += GetItemWeight(basePhys[i].UnifiedIndex) * basePhys[i].Count;
+            if (add0Cnt > 0 && add0Idx != resultIdx) inputWeight += GetItemWeight(add0Idx) * add0Cnt;
+            if (add1Cnt > 0 && add1Idx != resultIdx) inputWeight += GetItemWeight(add1Idx) * add1Cnt;
             for (int i = 0; i < _droneCollapsedCount; i++)
                 inputWeight += GetItemWeight(_droneCollapsedScratch[i].scrapIdx) * _droneCollapsedScratch[i].need;
             var tradeBuf = _tradeScratchIsAlias ? _tradeScratchAlias : _tradeScratch;
@@ -1447,8 +1470,7 @@ namespace CookBook
             int resultSurplus = (existingChain?.GetNetSurplusFor(nextRecipe.ResultIndex) ?? 0) + nextRecipe.ResultCount;
             int value = resultSurplus * GetItemWeight(nextRecipe.ResultIndex);
 
-            if (value <= 0) return true;
-            return inputWeight > value * 2;
+            return ExceedsEfficiencyBudget(inputWeight, value, nextRecipe);
         }
 
         private (Ingredient[] phys, (int scrapIdx, int need)[] drone, TradeRequirement[] trades)?
@@ -2570,12 +2592,13 @@ namespace CookBook
             return 3;
         }
 
-        private int GetWeightedCost(RecipeChain chain)
+        private int GetWeightedCost(RecipeChain chain, int excludeIdx = -1)
         {
             int total = 0;
 
             foreach (var ing in chain.PhysicalCostSparse)
-                total += GetItemWeight(ing.UnifiedIndex) * ing.Count;
+                if (ing.UnifiedIndex != excludeIdx)
+                    total += GetItemWeight(ing.UnifiedIndex) * ing.Count;
 
             foreach (var drone in chain.DroneCostSparse)
             {

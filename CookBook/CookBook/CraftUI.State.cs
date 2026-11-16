@@ -33,12 +33,20 @@ namespace CookBook
         internal static RectTransform _currentReticleTarget;
         internal static RectTransform _selectedAnchor;
 
-        internal static Button _globalCraftButton;
+        internal static RoR2.UI.HGButton _globalCraftButton;
         internal static TextMeshProUGUI _globalCraftButtonText;
         internal static Image _globalCraftButtonImage;
+        internal static bool _globalCraftButtonIsCanon;
 
         internal static RecipeChain _selectedChainData;
         internal static TMP_InputField _repeatInputField;
+        internal static RoR2.UI.HGButton _repeatMinusButton;
+        internal static RoR2.UI.HGButton _repeatPlusButton;
+        internal static RoR2.UI.HGButton _categoryButton;
+
+        internal static RoR2.UI.CraftingPanel _craftingPanel;
+        internal static RoR2.UI.HGButton _vanillaButtonTemplate;
+        internal static RoR2.UI.UILayerKey _vanillaTopLayer;
 
         internal static Sprite _solidPointSprite;
         internal static Sprite _taperedGradientSprite;

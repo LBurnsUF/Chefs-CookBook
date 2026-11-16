@@ -4,7 +4,12 @@
 		<TargetFramework>netstandard2.1</TargetFramework>
 		<LangVersion>preview</LangVersion>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
 		<BaseOutputPath>C:\Users\logan\Desktop\Personal Projects\LBurnsUF\Chefs-CookBook</BaseOutputPath>
+	</PropertyGroup>
+	<PropertyGroup>
+		<RoR2Dir Condition="'$(RoR2Dir)'=='' And Exists('D:\SteamLibrary\steamapps\common\Risk of Rain 2')">D:\SteamLibrary\steamapps\common\Risk of Rain 2</RoR2Dir>
+		<RoR2Dir Condition="'$(RoR2Dir)'==''">C:\Program Files (x86)\Steam\steamapps\common\Risk of Rain 2</RoR2Dir>
 	</PropertyGroup>
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
 		<DefineConstants>$(DefineConstants);COOKBOOK_PERF</DefineConstants>
@@ -15,11 +20,13 @@
 		<Compile Include="ColorFaderRuntime.cs" />
 		<Compile Include="CookBookUIComponents.cs" />
 		<Compile Include="CraftingExecutionHandler.cs" />
+		<Compile Include="CraftUI.Buttons.cs" />
 		<Compile Include="CraftUI.Catalog.cs" />
 		<Compile Include="CraftUI.Events.cs" />
 		<Compile Include="CraftUI.Instantiate.cs" />
 		<Compile Include="CraftUI.Layout.cs" />
 		<Compile Include="CraftUI.Lifecycle.cs" />
+		<Compile Include="CraftUI.Navigation.cs" />
 		<Compile Include="CraftUI.Populate.cs" />
 		<Compile Include="CraftUI.State.cs" />
 		<Compile Include="CraftUI.Templates.cs" />
@@ -54,27 +61,27 @@
 
 	<ItemGroup>
 		<Reference Include="Assembly-CSharp">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\Assembly-CSharp.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\Assembly-CSharp.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="RoR2">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\RoR2.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\RoR2.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="com.unity.multiplayer-hlapi.Runtime">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\com.unity.multiplayer-hlapi.Runtime.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\com.unity.multiplayer-hlapi.Runtime.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="HGCSharpUtils">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\HGCSharpUtils.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\HGCSharpUtils.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="Unity.TextMeshPro">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\Unity.TextMeshPro.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="UnityEngine.UI">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\UnityEngine.UI.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\UnityEngine.UI.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="RiskOfOptions">
@@ -82,14 +89,14 @@
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="Unity.Addressables">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\Unity.Addressables.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\Unity.Addressables.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="Unity.ResourceManager">
-			<HintPath>D:\SteamLibrary\steamapps\common\Risk of Rain 2\Risk of Rain 2_Data\Managed\Unity.ResourceManager.dll</HintPath>
+			<HintPath>$(RoR2Dir)\Risk of Rain 2_Data\Managed\Unity.ResourceManager.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
-		<Reference Include="CleanerChef">
+		<Reference Include="CleanerChef" Condition="Exists('C:\Users\logan\Desktop\Personal Projects\LBurnsUF\CleanChef\Cleaner-Chef\CleanChef\bin\Release\netstandard2.1\CleanerChef.dll')">
 			<HintPath>C:\Users\logan\Desktop\Personal Projects\LBurnsUF\CleanChef\Cleaner-Chef\CleanChef\bin\Release\netstandard2.1\CleanerChef.dll</HintPath>
 			<Private>False</Private>
 		</Reference>

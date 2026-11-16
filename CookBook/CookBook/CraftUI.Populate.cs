@@ -77,6 +77,7 @@ namespace CookBook
                 }
 
                 _activeBuildRoutine = null;
+                RebuildNavigation();
                 sw.Stop();
                 _log.LogInfo($"CraftUI: PopulateRecipeList completed in {sw.ElapsedMilliseconds}ms");
                 yield break;
@@ -158,6 +159,7 @@ namespace CookBook
             }
 
             _activeBuildRoutine = null;
+            RebuildNavigation();
 
             sw.Stop();
             _log.LogInfo($"CraftUI: PopulateRecipeList (Empty) completed in {sw.ElapsedMilliseconds}ms");
@@ -205,6 +207,7 @@ namespace CookBook
 
             _cachedDropdownOwner = owner;
             _activeDropdownRoutine = null;
+            RebuildNavigation();
         }
     }
 }

@@ -72,11 +72,24 @@ namespace CookBook
             {
                 runtime.RowTopButton.onClick.RemoveAllListeners();
                 runtime.RowTopButton.onClick.AddListener(() => ToggleRecipeRow(runtime));
+                runtime.RowTopButton.HighlightChanged = lit => OnRowTopHighlightChanged(runtime, lit);
             }
 
             if (runtime.DropdownLayoutElement != null) runtime.DropdownLayoutElement.preferredHeight = 0f;
 
             return rowGO;
+        }
+
+        // reticle marks gamepad focus on row headers
+        internal static void OnRowTopHighlightChanged(RecipeRowRuntime runtime, bool lit)
+        {
+            if (!runtime || !runtime.RowTop) return;
+            if (lit) AttachReticleTo(runtime.RowTop);
+            else if (IsReticleAttachedTo(runtime.RowTop))
+            {
+                if (_selectedAnchor) AttachReticleTo(_selectedAnchor);
+                else if (_selectionReticle) _selectionReticle.gameObject.SetActive(false);
+            }
         }
 
         internal static GameObject CreatePathRow(RectTransform parent, RecipeChain chain, RecipeRowRuntime owner)

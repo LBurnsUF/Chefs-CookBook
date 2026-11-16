@@ -10,7 +10,13 @@ namespace CookBook
     {
         internal static void AcquireTemplates(CraftingPanel craftingPanel, RectTransform cbRT)
         {
+            _craftingPanel = craftingPanel;
+            _vanillaTopLayer = craftingPanel.confirmButton ? craftingPanel.confirmButton.requiredTopLayer : null;
+            _vanillaButtonTemplate = FindVanillaButtonTemplate(craftingPanel);
+            if (!_vanillaButtonTemplate) _log.LogError("CraftUI: no vanilla HGButton found in CraftingPanel, buttons fall back to flat style.");
+
             CookBookSkeleton(cbRT);
+            InstallGamepadBindings(_cookbookRoot);
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();
             BuildRecipeRowTemplate();
@@ -49,11 +55,17 @@ namespace CookBook
             int recipeListVertPadPx = Mathf.RoundToInt(RecipeListVerticalPaddingNorm * _panelHeight);
             if (recipeListHeightPx < 0f) recipeListHeightPx = 0f;
 
+            float buttonInsetPx = RoundToEven(Mathf.Max(2f, 0.004f * _panelHeight));
+
             //------------------------ SearchBarContainer ------------------------
-            GameObject searchGO = CreateUIObject("SearchBarContainer", typeof(RectTransform));
+            GameObject searchGO = CreateUIObject("SearchBarContainer", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
 
             var searchRect = searchGO.GetComponent<RectTransform>();
             searchRect.SetParent(cookbookRoot, false);
+            // render above reticle
+            var searchCanvas = searchGO.GetComponent<Canvas>();
+            searchCanvas.overrideSorting = true;
+            searchCanvas.sortingOrder = 31;
 
             searchRect.anchorMin = new Vector2(0f, 1f);
             searchRect.anchorMax = new Vector2(1f, 1f);
@@ -71,8 +83,14 @@ namespace CookBook
             inputRect.anchorMax = new Vector2(0.75f, 1f);
 
             float borderThickness = Mathf.Max(1f, SearchBarBottomBorderThicknessNorm * _panelHeight);
-            inputRect.offsetMin = new Vector2(0f, borderThickness);
-            inputRect.offsetMax = new Vector2(-5f, 0f);
+            // equal gap to panel border above and underline below
+            const float rootBorderPx = 2f;
+            float searchGapPx = Mathf.Round((padTopPx - rootBorderPx + buttonInsetPx) * 0.5f);
+            float searchBottomPx = borderThickness + searchGapPx;
+            float searchTopPx = padTopPx - rootBorderPx - searchGapPx;
+
+            inputRect.offsetMin = new Vector2(0f, searchBottomPx);
+            inputRect.offsetMax = new Vector2(-5f, searchTopPx);
 
             var bgImage = inputGO.GetComponent<Image>();
             bgImage.color = new Color(0f, 0f, 0f, 0.4f);
@@ -122,40 +140,30 @@ namespace CookBook
             _searchInputField.placeholder = placeholderTMP;
             _searchInputField.onValueChanged.AddListener(_ => RefreshUIVisibility());
 
-            GameObject cycleBtnGO = CreateUIObject("CategoryCycleButton", typeof(RectTransform), typeof(Image), typeof(Button));
-            var cycleRT = cycleBtnGO.GetComponent<RectTransform>();
-            cycleRT.SetParent(searchRect, false);
+            var cycle = CreateCanonButton("CategoryCycleButton", searchRect, "ALL");
+            var cycleRT = (RectTransform)cycle.Button.transform;
             cycleRT.anchorMin = new Vector2(0.8f, 0f);
             cycleRT.anchorMax = new Vector2(1f, 1f);
-            cycleRT.offsetMin = new Vector2(0f, borderThickness);
-            cycleRT.offsetMax = Vector2.zero;
+            cycleRT.pivot = new Vector2(0.5f, 0.5f);
+            cycleRT.offsetMin = new Vector2(0f, searchBottomPx);
+            cycleRT.offsetMax = new Vector2(0f, searchTopPx);
 
-            var cycleImg = cycleBtnGO.GetComponent<Image>();
-            cycleImg.color = new Color(0f, 0f, 0f, 0.4f);
-            cycleImg.raycastTarget = true;
+            var labelTMP = cycle.Label;
+            if (labelTMP)
+            {
+                labelTMP.richText = true;
+                labelTMP.raycastTarget = false;
+                // center on drawn glyphs since the icon stretches the line
+                labelTMP.alignment = TextAlignmentOptions.Midline;
+            }
 
-            var Btn = cycleBtnGO.GetComponent<Button>();
-            Btn.transition = Selectable.Transition.None;
-            Btn.targetGraphic = cycleImg;
-            Btn.interactable = true;
-
-            // Label inside the button
-            GameObject labelGO = CreateUIObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-            var labelTMP = labelGO.GetComponent<TextMeshProUGUI>();
-            labelTMP.richText = true;
-            labelTMP.fontSize = 20f;
-            labelTMP.alignment = TextAlignmentOptions.Center;
-            labelTMP.raycastTarget = false;
-
-            labelGO.transform.SetParent(cycleRT, false);
-            var labelRT = (RectTransform)labelGO.transform;
-            labelRT.anchorMin = Vector2.zero;
-            labelRT.anchorMax = Vector2.one;
-            labelRT.sizeDelta = Vector2.zero;
-
+            _categoryButton = cycle.Button;
+            // category colors own this label
+            var cycleSkin = cycle.Button.GetComponent<RoR2.UI.SkinControllers.ButtonSkinController>();
+            if (cycleSkin) cycleSkin.useRecommendedLabel = false;
             UpdateCycleButtonVisuals(labelTMP);
 
-            Btn.onClick.AddListener(() =>
+            cycle.Button.onClick.AddListener(() =>
             {
                 RecipeFilter.CycleCategory();
                 UpdateCycleButtonVisuals(labelTMP);
@@ -163,13 +171,16 @@ namespace CookBook
             });
 
             AddBorderTapered(searchRect, new Color32(209, 209, 210, 200), bottom: borderThickness);
-            AddBorder(labelGO.GetComponent<RectTransform>(), new Color32(209, 209, 210, 200), 1f, 1f, 1f, 1f);
 
             // ------------------------ Footer ------------------------
-            GameObject footerGO = CreateUIObject("Footer", typeof(RectTransform));
+            GameObject footerGO = CreateUIObject("Footer", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
             var footerRT = footerGO.GetComponent<RectTransform>();
 
             footerRT.SetParent(cookbookRoot, false);
+            // render above reticle
+            var footerCanvas = footerGO.GetComponent<Canvas>();
+            footerCanvas.overrideSorting = true;
+            footerCanvas.sortingOrder = 31;
             footerRT.anchorMin = new Vector2(0f, 0f);
             footerRT.anchorMax = new Vector2(1f, 0f);
             footerRT.pivot = new Vector2(0.5f, 0f);
@@ -180,49 +191,58 @@ namespace CookBook
             footerRT.offsetMin = new Vector2(padLeftPx, footerRT.offsetMin.y);
             footerRT.offsetMax = new Vector2(-padRightPx, footerRT.offsetMax.y);
 
-            // craft button
-            GameObject craftBtnGO = CreateUIObject("GlobalCraftButton", typeof(RectTransform), typeof(Image), typeof(Button));
-            var craftBtnRT = craftBtnGO.GetComponent<RectTransform>();
-            var craftBtnImg = craftBtnGO.GetComponent<Image>();
-            var craftBtn = craftBtnGO.GetComponent<Button>();
+            // craft button and repeat stepper
+            float stepW = footerHeightPx;
+            float fieldW = RoundToEven(footerHeightPx * 1.6f);
+            float gapPx = buttonInsetPx;
 
-            craftBtnRT.SetParent(footerRT, false);
-            craftBtnRT.anchorMin = Vector2.zero;
-            craftBtnRT.anchorMax = new Vector2(0.8f, 1f);
-            craftBtnRT.sizeDelta = Vector2.zero;
+            var plus = CreateCanonButton("RepeatPlus", footerRT, "+");
+            StretchRight((RectTransform)plus.Button.transform, stepW, 0f);
+            plus.Button.onClick.AddListener(() => StepRepeatCount(1));
+            _repeatPlusButton = plus.Button;
 
-            craftBtnImg.color = new Color32(40, 40, 40, 255);
-            craftBtnImg.raycastTarget = false;
-            craftBtn.interactable = false;
-
-            var btnTextGO = CreateUIObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
-            var btnTextRT = btnTextGO.GetComponent<RectTransform>();
-            var btnTextTMP = btnTextGO.GetComponent<TextMeshProUGUI>();
-
-            btnTextRT.SetParent(craftBtnRT, false);
-            btnTextRT.anchorMin = Vector2.zero;
-            btnTextRT.anchorMax = Vector2.one;
-
-            btnTextTMP.text = "select a recipe";
-            btnTextTMP.alignment = TextAlignmentOptions.Center;
-            btnTextTMP.fontSize = footerHeightPx * 0.45f;
-            btnTextTMP.color = new Color32(100, 100, 100, 255);
-
-            _globalCraftButton = craftBtn;
-            _globalCraftButtonText = btnTextTMP;
-            _globalCraftButtonImage = craftBtnImg;
-            _globalCraftButton.onClick.AddListener(OnGlobalCraftButtonClicked);
-
-            // --- Repeat Craft Box ---
             GameObject repeatGO = CreateUIObject("RepeatInput", typeof(RectTransform), typeof(Image), typeof(TMP_InputField));
             var repeatRT = repeatGO.GetComponent<RectTransform>();
             repeatRT.SetParent(footerRT, false);
-            repeatRT.anchorMin = new Vector2(0.8f, 0f);
-            repeatRT.anchorMax = Vector2.one;
-            repeatRT.sizeDelta = Vector2.zero;
+            StretchRight(repeatRT, fieldW, stepW + gapPx);
 
-            repeatGO.GetComponent<Image>().color = new Color32(20, 20, 20, 255);
+            var minus = CreateCanonButton("RepeatMinus", footerRT, "-");
+            StretchRight((RectTransform)minus.Button.transform, stepW, stepW + gapPx + fieldW + gapPx);
+            minus.Button.onClick.AddListener(() => StepRepeatCount(-1));
+            _repeatMinusButton = minus.Button;
+
+            var craft = CreateCanonButton("GlobalCraftButton", footerRT, "Select a Recipe");
+            var craftBtnRT = (RectTransform)craft.Button.transform;
+            craftBtnRT.anchorMin = Vector2.zero;
+            craftBtnRT.anchorMax = Vector2.one;
+            craftBtnRT.pivot = new Vector2(0.5f, 0.5f);
+            craftBtnRT.offsetMin = Vector2.zero;
+            craftBtnRT.offsetMax = new Vector2(-(stepW * 2f + fieldW + gapPx * 3f), 0f);
+            craft.Button.interactable = false;
+            // center on drawn glyphs so descenders clear the frame
+            var craftSkin = craft.Button.GetComponent<RoR2.UI.SkinControllers.ButtonSkinController>();
+            if (craftSkin) craftSkin.useRecommendedAlignment = false;
+            if (craft.Label) craft.Label.alignment = TextAlignmentOptions.Midline;
+
+            // lighter disabled tint so the frame reads like the stepper
+            var craftColors = craft.Button.colors;
+            craftColors.disabledColor = Color.Lerp(craftColors.disabledColor, craftColors.normalColor, 0.5f);
+            craft.Button.colors = craftColors;
+
+            _globalCraftButton = craft.Button;
+            _globalCraftButtonText = craft.Label;
+            _globalCraftButtonImage = craft.Image;
+            _globalCraftButtonIsCanon = craft.IsCanon;
+            _globalCraftButton.onClick.AddListener(OnGlobalCraftButtonClicked);
+
+            // --- Repeat Craft Box ---
+            var repeatImg = repeatGO.GetComponent<Image>();
+            // match search field
+            repeatImg.color = new Color(0f, 0f, 0f, 0.4f);
+            repeatImg.raycastTarget = true;
             _repeatInputField = repeatGO.GetComponent<TMP_InputField>();
+            // mouse only, stepper handles gamepad
+            _repeatInputField.navigation = new Navigation { mode = Navigation.Mode.None };
             _repeatInputField.characterValidation = TMP_InputField.CharacterValidation.Digit;
 
             var RepeatTextAreaRT = CreateInternal("Text Area", repeatRT, typeof(RectMask2D));
@@ -231,7 +251,7 @@ namespace CookBook
             repeatPhTMP.text = "1";
             repeatPhTMP.fontSize = footerHeightPx * 0.45f;
             repeatPhTMP.alignment = TextAlignmentOptions.Center;
-            repeatPhTMP.color = new Color(1f, 1f, 1f, 0.3f);
+            repeatPhTMP.color = new Color(1f, 1f, 1f, 0.5f);
             repeatPhTMP.raycastTarget = false;
 
             var repeatTMP = CreateInternal("Text", RepeatTextAreaRT, typeof(TextMeshProUGUI)).GetComponent<TextMeshProUGUI>();
@@ -246,9 +266,6 @@ namespace CookBook
 
             _repeatInputField.text = string.Empty;
             _repeatInputField.onEndEdit.AddListener(OnRepeatInputEndEdit);
-
-            AddBorder(craftBtnRT, new Color32(209, 209, 210, 200), 1f, 1f, 1f, 1f);
-            AddBorder(footerRT, new Color32(209, 209, 210, 200), 1f, 1f, 1f, 1f);
 
             //------------------------ RecipeListContainer ------------------------
             GameObject listGO = CreateUIObject("RecipeListContainer", typeof(RectTransform), typeof(ScrollRect));
@@ -275,6 +292,7 @@ namespace CookBook
             scroll.inertia = true;
             scroll.decelerationRate = 0.16f;
             scroll.elasticity = 0.1f;
+            listGO.AddComponent<ScrollFollowSelection>().Scroll = scroll;
 
             GameObject viewportGO = CreateUIObject("Viewport", typeof(RectTransform), typeof(RectMask2D), typeof(Image));
             var viewportRT = viewportGO.GetComponent<RectTransform>();
@@ -365,11 +383,15 @@ namespace CookBook
             rowLE.flexibleWidth = 1f;
 
             // ---------------- RowTop ----------------
-            GameObject rowTopGO = CreateUIObject("RowTop", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+            GameObject rowTopGO = CreateUIObject("RowTop", typeof(RectTransform), typeof(Image), typeof(CookBookButton), typeof(DeselectOnPointerExit), typeof(LayoutElement));
 
             var rowTopRT = rowTopGO.GetComponent<RectTransform>();
             var rowTopImg = rowTopGO.GetComponent<Image>();
             var rowTopLE = rowTopGO.GetComponent<LayoutElement>();
+            var rowTopBtn = rowTopGO.GetComponent<CookBookButton>();
+            rowTopBtn.targetGraphic = rowTopImg;
+            rowTopBtn.transition = Selectable.Transition.None;
+            rowTopBtn.requiredTopLayer = _vanillaTopLayer;
 
             rowTopRT.SetParent(rowRT, false);
 
@@ -527,7 +549,7 @@ namespace CookBook
             runtime.RowTransform = rowRT;
             runtime.RowTop = rowTopRT;
             runtime.RowLayoutElement = rowLE;
-            runtime.RowTopButton = rowTopGO.GetComponent<Button>();
+            runtime.RowTopButton = rowTopBtn;
             runtime.ArrowText = arrowTMP;
             runtime.DropdownMountPoint = mountRT;
             runtime.DropdownLayoutElement = mountLE;
@@ -555,14 +577,13 @@ namespace CookBook
             float totalRowHeightPx = visualHeightPx + spacingPx;
             float paddingY = RoundToEven(spacingPx / 2f);
 
-            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(Button), typeof(EventTrigger), typeof(PathRowRuntime));
+            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(CookBookButton), typeof(DeselectOnPointerExit), typeof(PathRowRuntime));
 
             var rowRT = (RectTransform)rowGO.transform;
             var rowLE = rowGO.GetComponent<LayoutElement>();
             var rowHitbox = rowGO.GetComponent<Image>();
             var runtime = rowGO.GetComponent<PathRowRuntime>();
-            var pathButton = rowGO.GetComponent<Button>();
-            var buttonEvent = rowGO.GetComponent<EventTrigger>();
+            var pathButton = rowGO.GetComponent<CookBookButton>();
 
             rowRT.SetParent(_cookbookRoot.transform, false);
             rowGO.SetActive(false);
@@ -583,6 +604,7 @@ namespace CookBook
 
             pathButton.targetGraphic = rowHitbox;
             pathButton.transition = Selectable.Transition.None;
+            pathButton.requiredTopLayer = _vanillaTopLayer;
 
             var visualGO = CreateUIObject("Visuals", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(ColorFaderRuntime));
 
@@ -612,7 +634,6 @@ namespace CookBook
             runtime.BackgroundImage = visualImg;
             runtime.VisualRect = visualRT;
             runtime.pathButton = pathButton;
-            runtime.buttonEvent = buttonEvent;
 
             _pathRowTemplate = rowGO;
         }
@@ -691,6 +712,7 @@ namespace CookBook
             _sharedDropdown.Content = contentRT;
             _sharedDropdown.Background = drawerRT;
             drawerGO.transform.SetParent(_cookbookRoot.transform, false);
+            drawerGO.AddComponent<ScrollFollowSelection>().Scroll = scroll;
             drawerGO.SetActive(false);
         }
 

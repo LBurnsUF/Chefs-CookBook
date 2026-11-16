@@ -1,3 +1,4 @@
+using RoR2.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -7,6 +8,78 @@ using System.Collections;
 
 namespace CookBook
 {
+    //==================== Buttons ====================
+    // hover and gamepad select share one highlight
+    internal sealed class CookBookButton : HGButton
+    {
+        internal System.Action<bool> HighlightChanged;
+        private bool _lit;
+
+        protected override void DoStateTransition(SelectionState state, bool instant)
+        {
+            base.DoStateTransition(state, instant);
+            bool lit = state == SelectionState.Highlighted || state == SelectionState.Selected || state == SelectionState.Pressed;
+            if (lit == _lit) return;
+            _lit = lit;
+            HighlightChanged?.Invoke(lit);
+        }
+    }
+
+    // vanilla ScrollToSelection needs a scrollbar
+    [RequireComponent(typeof(MPEventSystemLocator))]
+    internal sealed class ScrollFollowSelection : MonoBehaviour
+    {
+        internal ScrollRect Scroll;
+        private MPEventSystemLocator _loc;
+        private GameObject _last;
+        private readonly Vector3[] _tc = new Vector3[4];
+        private readonly Vector3[] _vc = new Vector3[4];
+
+        private void Awake() { _loc = GetComponent<MPEventSystemLocator>(); }
+
+        private void LateUpdate()
+        {
+            var es = _loc ? _loc.eventSystem : null;
+            var cur = es ? es.currentSelectedGameObject : null;
+            if (cur == _last) return;
+            _last = cur;
+
+            if (!cur || !Scroll || !Scroll.content || !cur.transform.IsChildOf(Scroll.content)) return;
+            if (es.currentInputSource != MPEventSystem.InputSource.Gamepad) return;
+
+            var vp = Scroll.viewport ? Scroll.viewport : (RectTransform)Scroll.transform;
+            ((RectTransform)cur.transform).GetWorldCorners(_tc);
+            vp.GetWorldCorners(_vc);
+
+            float over = _tc[1].y - _vc[1].y;
+            float under = _tc[0].y - _vc[0].y;
+            float delta = over > 0f ? over : (under < 0f ? under : 0f);
+            if (delta == 0f) return;
+
+            var local = Scroll.content.parent.InverseTransformVector(new Vector3(0f, delta, 0f));
+            Scroll.StopMovement();
+            var p = Scroll.content.anchoredPosition;
+            p.y -= local.y;
+            Scroll.content.anchoredPosition = p;
+        }
+    }
+
+    // mouse leaving drops selection so highlight clears
+    [RequireComponent(typeof(MPEventSystemLocator))]
+    internal sealed class DeselectOnPointerExit : MonoBehaviour, IPointerExitHandler
+    {
+        private MPEventSystemLocator _loc;
+
+        private void Awake() { _loc = GetComponent<MPEventSystemLocator>(); }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            var es = _loc ? _loc.eventSystem : null;
+            if (!es || es.currentInputSource != MPEventSystem.InputSource.MouseAndKeyboard) return;
+            if (es.currentSelectedGameObject == gameObject) es.SetSelectedGameObject(null);
+        }
+    }
+
     //==================== Runtimes ====================
     internal sealed class RecipeRowRuntime : MonoBehaviour
     {
@@ -15,7 +88,7 @@ namespace CookBook
         public RectTransform RowTransform;
         public LayoutElement RowLayoutElement;
         public RectTransform RowTop;
-        public Button RowTopButton;
+        public CookBookButton RowTopButton;
         public TextMeshProUGUI ArrowText;
 
         public RectTransform DropdownMountPoint;
@@ -32,7 +105,11 @@ namespace CookBook
 
         private void OnDestroy()
         {
-            if (RowTopButton != null) RowTopButton.onClick.RemoveAllListeners();
+            if (RowTopButton != null)
+            {
+                RowTopButton.onClick.RemoveAllListeners();
+                RowTopButton.HighlightChanged = null;
+            }
             Entry = null;
             CraftUI.NotifyRecipeRowDestroyed(this);
         }
@@ -44,10 +121,8 @@ namespace CookBook
         internal RecipeChain Chain;
         internal Image BackgroundImage;
         public RectTransform VisualRect;
-        public Button pathButton;
-        public EventTrigger buttonEvent;
+        public CookBookButton pathButton;
         private ColorFaderRuntime fader;
-        public ScrollRect parentScroll;
 
         internal bool isSelected;
         internal bool isHovered;
@@ -55,25 +130,17 @@ namespace CookBook
         internal const float FadeDuration = 0.1f;
 
         internal static readonly Color Col_BG_Normal = new Color32(26, 26, 26, 50);
-        internal static readonly Color Col_BG_Active = new Color32(206, 198, 143, 200);
+        internal static readonly Color Col_BG_Active = new Color32(206, 198, 143, 255);
         internal static readonly Color Col_BG_Hover = new Color32(206, 198, 143, 75);
 
         private void Awake()
         {
-            if (pathButton == null) pathButton = GetComponent<Button>();
-            if (buttonEvent == null) buttonEvent = GetComponent<EventTrigger>();
-            if (pathButton != null) pathButton.onClick.AddListener(OnClicked);
-            if (parentScroll == null) parentScroll = GetComponentInParent<ScrollRect>();
-
-            EventTrigger.Entry entryEnter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
-            entryEnter.callback.AddListener((data) => OnHighlightChanged(true));
-            buttonEvent.triggers.Add(entryEnter);
-            EventTrigger.Entry entryExit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
-            entryExit.callback.AddListener((data) => OnHighlightChanged(false));
-            buttonEvent.triggers.Add(entryExit);
-            EventTrigger.Entry entryScroll = new EventTrigger.Entry { eventID = EventTriggerType.Scroll };
-            entryScroll.callback.AddListener((data) => BubbleScroll(data));
-            buttonEvent.triggers.Add(entryScroll);
+            if (pathButton == null) pathButton = GetComponent<CookBookButton>();
+            if (pathButton != null)
+            {
+                pathButton.onClick.AddListener(OnClicked);
+                pathButton.HighlightChanged = OnHighlightChanged;
+            }
 
             if (VisualRect == null)
             {
@@ -100,8 +167,11 @@ namespace CookBook
 
         private void OnDestroy()
         {
-            if (pathButton != null) pathButton.onClick.RemoveListener(OnClicked);
-            if (buttonEvent != null) buttonEvent.triggers.Clear();
+            if (pathButton != null)
+            {
+                pathButton.onClick.RemoveListener(OnClicked);
+                pathButton.HighlightChanged = null;
+            }
 
             CraftUI.NotifyPathRowDestroyed(this);
             OwnerRow = null;
@@ -126,12 +196,6 @@ namespace CookBook
             }
             UpdateVisuals(false);
         }
-        private void BubbleScroll(BaseEventData data)
-        {
-            if (parentScroll != null && data is PointerEventData ped)
-                parentScroll.OnScroll(ped);
-        }
-
         public void SetSelected(bool selected)
         {
             if (isSelected == selected) return;

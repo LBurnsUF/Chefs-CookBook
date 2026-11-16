@@ -58,6 +58,7 @@ namespace CookBook
             _globalCraftButton = null;
             _globalCraftButtonText = null;
             _globalCraftButtonImage = null;
+            ClearButtonRefs();
 
             _selectionReticle = null;
             _currentReticleTarget = null;
@@ -224,6 +225,7 @@ namespace CookBook
             _recipeRowUIs.Clear();
             _iconCache.Clear();
             _droneIconCache.Clear();
+            ClearButtonRefs();
 
             _currentController = null;
             _skeletonBuilt = false;
@@ -231,6 +233,19 @@ namespace CookBook
             _openRow = null;
             _activeBuildRoutine = null;
             _activeDropdownRoutine = null;
+        }
+
+        // vanilla refs die with the panel
+        internal static void ClearButtonRefs()
+        {
+            _repeatMinusButton = null;
+            _repeatPlusButton = null;
+            _categoryButton = null;
+            _globalCraftButtonIsCanon = false;
+            _craftingPanel = null;
+            _vanillaButtonTemplate = null;
+            _vanillaTopLayer = null;
+            _navOrder.Clear();
         }
 
         internal static void CloseCraftPanel(CraftingController specificController = null)

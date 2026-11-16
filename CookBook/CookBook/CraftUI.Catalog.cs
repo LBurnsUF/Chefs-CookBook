@@ -1,5 +1,6 @@
 ﻿using RoR2;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
 using static CookBook.CraftPlanner;
 
 namespace CookBook
@@ -21,15 +22,22 @@ namespace CookBook
             }
         }
 
+        // obsolete direct sprite still needed for modded content
+#pragma warning disable CS0618
         internal static Sprite GetIcon(int unifiedIndex)
         {
             if (_iconCache.TryGetValue(unifiedIndex, out var sprite)) return sprite;
 
-            if (unifiedIndex < ItemCatalog.itemCount) sprite = ItemCatalog.GetItemDef((ItemIndex)unifiedIndex)?.pickupIconSprite;
+            if (unifiedIndex < ItemCatalog.itemCount)
+            {
+                var idef = ItemCatalog.GetItemDef((ItemIndex)unifiedIndex);
+                if (idef != null) sprite = LoadIcon(idef.pickupIconSpriteReference, idef.pickupIconSprite);
+            }
             else
             {
                 int equipIdx = unifiedIndex - ItemCatalog.itemCount;
-                sprite = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)equipIdx)?.pickupIconSprite;
+                var edef = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)equipIdx);
+                if (edef != null) sprite = LoadIcon(edef.pickupIconSpriteReference, edef.pickupIconSprite);
             }
 
             if (sprite != null) _iconCache[unifiedIndex] = sprite;
@@ -41,13 +49,22 @@ namespace CookBook
             if (_droneIconCache.TryGetValue(droneIndex, out var sprite)) return sprite;
 
             var def = DroneCatalog.GetDroneDef(droneIndex);
-            if (def != null && def.iconSprite != null)
+            sprite = def != null ? LoadIcon(def.iconSpriteReference, def.iconSprite) : null;
+            if (sprite != null)
             {
-                sprite = def.iconSprite;
                 _droneIconCache[droneIndex] = sprite;
                 return sprite;
             }
             return null;
+        }
+#pragma warning restore CS0618
+
+        // v1.5.0: vanilla icons are addressable only, direct sprite is modded content
+        private static Sprite LoadIcon(AssetReferenceT<Sprite> reference, Sprite direct)
+        {
+            if (direct != null) return direct;
+            if (reference == null || !reference.RuntimeKeyIsValid()) return null;
+            return Addressables.LoadAssetAsync<Sprite>(reference.RuntimeKey).WaitForCompletion();
         }
 
         internal static Color GetEntryColor(CraftableEntry entry)

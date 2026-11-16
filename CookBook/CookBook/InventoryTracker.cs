@@ -1042,12 +1042,13 @@ namespace CookBook
             for (int i = 0; i < itemLen; i++) stacks[i] = inv.GetItemCountPermanent((ItemIndex)i);
 
             int slotCount = inv.GetEquipmentSlotCount();
+            int setCount = inv.accessibleEquipmentSetCount;
             for (int slot = 0; slot < slotCount; slot++)
             {
-                int setCount = inv.GetEquipmentSetCount((uint)slot);
                 for (int set = 0; set < setCount; set++)
                 {
-                    var state = inv.GetEquipment((uint)slot, (uint)set);
+                    var location = new EquipmentLocation { slot = (uint)slot, set = (uint)set };
+                    var state = inv.GetEquipment(in location);
                     if (state.equipmentIndex != EquipmentIndex.None)
                     {
                         int unifiedIndex = itemLen + (int)state.equipmentIndex;

@@ -673,15 +673,16 @@ namespace CookBook
 
             int currentSlot = inv.activeEquipmentSlot;
             int slotCount = inv.GetEquipmentSlotCount();
+            int setCount = inv.accessibleEquipmentSetCount;
 
             int targetSlot = -1;
             int targetSet = -1;
             for (int s = 0; s < slotCount; s++)
             {
-                int setCount = inv.GetEquipmentSetCount((uint)s);
                 for (int set = 0; set < setCount; set++)
                 {
-                    if (inv.GetEquipment((uint)s, (uint)set).equipmentIndex == target)
+                    var location = new EquipmentLocation { slot = (uint)s, set = (uint)set };
+                    if (inv.GetEquipment(in location).equipmentIndex == target)
                     {
                         targetSlot = s;
                         targetSet = set;
@@ -718,8 +719,8 @@ namespace CookBook
                 }
             }
 
-            int currentSet = inv.activeEquipmentSet[inv.activeEquipmentSlot];
-            int totalSets = inv.GetEquipmentSetCount((uint)inv.activeEquipmentSlot);
+            int currentSet = (int)inv.GetActiveEquipmentSetInSlot(inv.activeEquipmentSlot);
+            int totalSets = inv.accessibleEquipmentSetCount;
 
             if (targetSet != currentSet)
             {
@@ -731,7 +732,7 @@ namespace CookBook
                 for (int i = 0; i < clicks; i++) inv.CallCmdSwitchToNextEquipmentInSet();
 
                 float timeout = 2.0f;
-                while (inv.activeEquipmentSet[inv.activeEquipmentSlot] != targetSet && timeout > 0)
+                while (inv.GetActiveEquipmentSetInSlot(inv.activeEquipmentSlot) != (uint)targetSet && timeout > 0)
                 {
                     timeout -= 0.1f;
                     yield return new WaitForSeconds(0.1f);
@@ -818,12 +819,13 @@ namespace CookBook
             {
                 var inv = body.inventory;
                 int slotCount = inv.GetEquipmentSlotCount();
+                int setCount = inv.accessibleEquipmentSetCount;
                 for (int slot = 0; slot < slotCount; slot++)
                 {
-                    int setCount = inv.GetEquipmentSetCount((uint)slot);
                     for (int set = 0; set < setCount; set++)
                     {
-                        if (inv.GetEquipment((uint)slot, (uint)set).equipmentIndex == def.equipmentIndex)
+                        var location = new EquipmentLocation { slot = (uint)slot, set = (uint)set };
+                        if (inv.GetEquipment(in location).equipmentIndex == def.equipmentIndex)
                         {
                             return 1;
                         }
