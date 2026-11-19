@@ -741,7 +741,20 @@ namespace CookBook
             canvas.overrideSorting = true;
             canvas.sortingOrder = 30;
 
-            AddBorder(_selectionReticle, new Color32(255, 255, 255, 255), top: 3f, bottom: 3f, left: 3f, right: 3f);
+            // clip inside our canvas, parent masks don't reach it
+            var clipGO = CreateUIObject("Clip", typeof(RectTransform), typeof(RectMask2D), typeof(ReticleClip));
+            var clipRT = clipGO.GetComponent<RectTransform>();
+            clipRT.SetParent(_selectionReticle, false);
+            clipRT.anchorMin = clipRT.anchorMax = clipRT.pivot = Vector2.zero;
+
+            var frameRT = CreateUIObject("Frame", typeof(RectTransform)).GetComponent<RectTransform>();
+            frameRT.SetParent(clipRT, false);
+            frameRT.anchorMin = frameRT.anchorMax = frameRT.pivot = Vector2.zero;
+
+            _reticleClip = clipGO.GetComponent<ReticleClip>();
+            _reticleClip.Frame = frameRT;
+
+            AddBorder(frameRT, new Color32(255, 255, 255, 255), top: 3f, bottom: 3f, left: 3f, right: 3f);
 
             var img = reticleGO.GetComponent<Image>();
             img.color = new Color32(0, 0, 0, 0);

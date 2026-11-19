@@ -16,6 +16,10 @@ namespace CookBook
         internal static bool _hasSnap;
 
         internal static GameObject _cookbookRoot;
+        internal static GameObject _panelHolder;
+        internal static RoR2.UI.MPEventSystemProvider _eventSystemProvider;
+        internal static Vector2 _builtSize;
+        internal static ReticleClip _reticleClip;
         internal static RectTransform _recipeListContent;
         internal static TMP_InputField _searchInputField;
 

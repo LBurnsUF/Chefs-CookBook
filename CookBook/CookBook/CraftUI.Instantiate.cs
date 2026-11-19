@@ -8,7 +8,7 @@ namespace CookBook
 {
     internal static partial class CraftUI
     {
-        internal static GameObject CreateRecipeRow(RectTransform parent, CraftableEntry entry)
+        internal static RecipeRowRuntime CreateRecipeRow(RectTransform parent)
         {
             if (_recipeRowTemplate == null) return null;
 
@@ -21,9 +21,23 @@ namespace CookBook
             if (runtime == null)
             {
                 _log.LogError("CreateRecipeRow: RecipeRowRuntime component missing on template.");
-                return rowGO;
+                return null;
             }
 
+            var view = runtime.View;
+            if (view.RowTopButton != null)
+            {
+                view.RowTopButton.onClick.RemoveAllListeners();
+                view.RowTopButton.onClick.AddListener(() => ToggleRecipeRow(runtime));
+                view.RowTopButton.HighlightChanged = lit => OnRowTopHighlightChanged(runtime, lit);
+            }
+
+            return runtime;
+        }
+
+        // fills a new or reused row
+        internal static void BindRecipeRow(RecipeRowRuntime runtime, CraftableEntry entry)
+        {
             runtime.Entry = entry;
             runtime.IsExpanded = false;
 
@@ -70,16 +84,10 @@ namespace CookBook
                 else view.ResultSlot.StackText.gameObject.SetActive(false);
             }
 
-            if (view.RowTopButton != null)
-            {
-                view.RowTopButton.onClick.RemoveAllListeners();
-                view.RowTopButton.onClick.AddListener(() => ToggleRecipeRow(runtime));
-                view.RowTopButton.HighlightChanged = lit => OnRowTopHighlightChanged(runtime, lit);
-            }
-
+            // ---------------- Collapsed state ----------------
+            if (view.ArrowText != null) view.ArrowText.text = ">";
             if (view.DropdownLayoutElement != null) view.DropdownLayoutElement.preferredHeight = 0f;
-
-            return rowGO;
+            if (view.RowLayoutElement != null) view.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
         }
 
         // reticle marks gamepad focus on row headers

@@ -41,12 +41,11 @@ namespace CookBook
                 if (_activeDropdownRoutine != null) _runner.StopCoroutine(_activeDropdownRoutine);
             }
 
-            try
-            {
-                if (_cookbookRoot != null && (bool)_cookbookRoot)
-                    Detach();
-            }
+            try { DestroyPanel(); }
             catch { }
+
+            if (_panelHolder) UnityEngine.Object.Destroy(_panelHolder);
+            _panelHolder = null;
 
             _activeBuildRoutine = null;
             _activeDropdownRoutine = null;
@@ -61,6 +60,7 @@ namespace CookBook
             ClearButtonRefs();
 
             _selectionReticle = null;
+            _reticleClip = null;
             _currentReticleTarget = null;
             _selectedAnchor = null;
             _currentHoveredPath = null;
@@ -72,16 +72,38 @@ namespace CookBook
             _skeletonBuilt = false;
         }
 
+        //==================== Attach ====================
         internal static void Attach(CraftingController controller)
         {
             _currentController = controller;
-            if (_cookbookRoot != null) return;
             var craftingPanel = UnityEngine.Object.FindObjectOfType<CraftingPanel>();
-
             if (!craftingPanel) return;
 
-            // hierarchy pieces
             Transform bgContainerTr = craftingPanel.transform.Find("MainPanel/Juice/BGContainer");
+            if (!bgContainerTr) return;
+
+            // open fires twice
+            if (_cookbookRoot != null && _cookbookRoot.transform.parent == bgContainerTr) return;
+
+            if (!LayoutVanillaPanel(craftingPanel, bgContainerTr, out Vector2 size, out Vector2 position)) return;
+
+            // sizes are baked in, rebuild on resolution change
+            if (_cookbookRoot == null || size != _builtSize)
+            {
+                DestroyPanel();
+                BuildPanel(craftingPanel, bgContainerTr, size, position);
+                if (LastCraftables != null && LastCraftables.Count > 0) PopulateRecipeList(LastCraftables);
+            }
+            else MountPanel(craftingPanel, bgContainerTr, position);
+        }
+
+        // widens the vanilla panel and returns the cookbook strip
+        private static bool LayoutVanillaPanel(CraftingPanel craftingPanel, Transform bgContainerTr, out Vector2 size, out Vector2 position)
+        {
+            size = Vector2.zero;
+            position = Vector2.zero;
+
+            // hierarchy pieces
             RectTransform bgRect = bgContainerTr.GetComponent<RectTransform>(); // contains bgmain
             RectTransform bgMainRect = bgContainerTr ? bgContainerTr.Find("BGMain")?.GetComponent<RectTransform>() : null;
             RectTransform labelRect = craftingPanel.transform.Find("MainPanel/Juice/LabelContainer")?.GetComponent<RectTransform>();
@@ -90,7 +112,7 @@ namespace CookBook
             RectTransform submenuRect = bgContainerTr.Find("SubmenuContainer")?.GetComponent<RectTransform>();
             RectTransform invRect = bgContainerTr.Find("InventoryContainer")?.GetComponent<RectTransform>();
 
-            if (!labelRect) return;
+            if (!labelRect) return false;
 
             labelRect.SetParent(bgMainRect, worldPositionStays: true);
 
@@ -177,28 +199,41 @@ namespace CookBook
             float boundsHeight = RoundToEven(contentBounds.size.y);
             float boundsCenterY = RoundToEven(contentBounds.center.y);
 
-            // create CookBook panel in the new right-hand strip
-            _cookbookRoot = CreateUIObject("CookBookPanel", typeof(RectTransform), typeof(CraftUIRunner), typeof(Canvas), typeof(GraphicRaycaster));
-
-            _runner = _cookbookRoot.GetComponent<CraftUIRunner>();
-            var canvas = _cookbookRoot.GetComponent<Canvas>();
-            canvas.pixelPerfect = true;
-            _cookbookRoot.GetComponent<GraphicRaycaster>();
-            RectTransform cbRT = _cookbookRoot.GetComponent<RectTransform>();
-
-            _cookbookRoot.transform.SetParent(bgContainerTr, false);
-            cbRT.anchorMin = new Vector2(1f, 0.5f);
-            cbRT.anchorMax = new Vector2(1f, 0.5f);
-            cbRT.pivot = new Vector2(1f, 0.5f);
-
             /// ensure equal margins, same y position
-            cbRT.sizeDelta = new Vector2(cookbookWidth, boundsHeight);
-            cbRT.anchoredPosition = new Vector2(-sideMargin, boundsCenterY);
+            size = new Vector2(cookbookWidth, boundsHeight);
+            position = new Vector2(-sideMargin, boundsCenterY);
 
             labelRect.GetComponent<Image>().enabled = false;
             AddBorder(labelRect, new Color32(209, 209, 210, 255), 2f, 2f, 6f, 6f);
 
-            DebugLog.Trace(_log, $"CraftUI.Attach: CookBook panel attached. baseWidth={baseWidth:F1}, newWidth={newBgWidth:F1}, cookbookWidth={cookbookWidth:F1}, invBaseWidth={invBaseWidth:F1}");
+            DebugLog.Trace(_log, $"CraftUI.Attach: vanilla panel laid out. baseWidth={baseWidth:F1}, newWidth={newBgWidth:F1}, cookbookWidth={cookbookWidth:F1}, invBaseWidth={invBaseWidth:F1}");
+            return true;
+        }
+
+        //==================== Panel ====================
+        // built once, kept across opens
+        private static void BuildPanel(CraftingPanel craftingPanel, Transform bgContainerTr, Vector2 size, Vector2 position)
+        {
+            if (!_panelHolder)
+            {
+                _panelHolder = new GameObject("CookBookHolder");
+                UnityEngine.Object.DontDestroyOnLoad(_panelHolder);
+            }
+
+            // own provider so children keep an event system between vanilla panels
+            _cookbookRoot = CreateUIObject("CookBookPanel", typeof(RectTransform), typeof(MPEventSystemProvider), typeof(CraftUIRunner), typeof(Canvas), typeof(GraphicRaycaster));
+
+            _eventSystemProvider = _cookbookRoot.GetComponent<MPEventSystemProvider>();
+            _runner = _cookbookRoot.GetComponent<CraftUIRunner>();
+            _cookbookRoot.GetComponent<Canvas>().pixelPerfect = true;
+
+            RectTransform cbRT = _cookbookRoot.GetComponent<RectTransform>();
+            cbRT.sizeDelta = size;
+            _builtSize = size;
+
+            // build mounted so canvas scale matches
+            MountPanel(craftingPanel, bgContainerTr, position);
+
             _panelWidth = cbRT.rect.width;
             _panelHeight = cbRT.rect.height;
 
@@ -206,28 +241,120 @@ namespace CookBook
             AcquireTemplates(craftingPanel, cbRT);
             sw.Stop();
             _log.LogInfo($"CraftUI: Skeleton & Templates built in {sw.ElapsedMilliseconds}ms");
-
-            if (LastCraftables != null && LastCraftables.Count > 0) PopulateRecipeList(LastCraftables);
         }
 
+        // puts the built panel on a fresh vanilla panel
+        private static void MountPanel(CraftingPanel craftingPanel, Transform bgContainerTr, Vector2 position)
+        {
+            _craftingPanel = craftingPanel;
+            _vanillaTopLayer = craftingPanel.confirmButton ? craftingPanel.confirmButton.requiredTopLayer : null;
+
+            RectTransform cbRT = _cookbookRoot.GetComponent<RectTransform>();
+            cbRT.SetParent(bgContainerTr, false);
+            cbRT.anchorMin = new Vector2(1f, 0.5f);
+            cbRT.anchorMax = new Vector2(1f, 0.5f);
+            cbRT.pivot = new Vector2(1f, 0.5f);
+            cbRT.anchoredPosition = position;
+
+            var vanillaProvider = bgContainerTr.GetComponentInParent<MPEventSystemProvider>();
+            _eventSystemProvider.eventSystem = vanillaProvider ? vanillaProvider.resolvedEventSystem : null;
+
+            BindTopLayer(_vanillaTopLayer, true);
+            _cookbookRoot.GetComponent<Canvas>().enabled = true;
+        }
+
+        // parks the panel instead of destroying it
         internal static void Detach()
         {
-            if (_cookbookRoot != null)
+            _currentController = null;
+
+            if (_cookbookRoot == null || !_panelHolder) return;
+            if (_cookbookRoot.transform.parent == _panelHolder.transform) return;
+
+            ResetPanelState();
+
+            _cookbookRoot.transform.SetParent(_panelHolder.transform, false);
+            _cookbookRoot.GetComponent<Canvas>().enabled = false;
+            _eventSystemProvider.eventSystem = null;
+
+            // gamepad bindings would fire from the holder otherwise
+            BindTopLayer(null, false);
+            _craftingPanel = null;
+            _vanillaTopLayer = null;
+            _vanillaButtonTemplate = null;
+        }
+
+        // next open looks like a new panel
+        private static void ResetPanelState()
+        {
+            if (_activeDropdownRoutine != null && _runner != null)
             {
-                UnityEngine.Object.Destroy(_cookbookRoot);
-                _cookbookRoot = null;
+                _runner.StopCoroutine(_activeDropdownRoutine);
+                _activeDropdownRoutine = null;
+            }
+
+            if (_openRow != null)
+            {
+                CollapseRow(_openRow);
+                _openRow = null;
+            }
+
+            if (_sharedDropdown != null) _sharedDropdown.Close();
+            _cachedDropdownOwner = null;
+
+            DeselectCurrentPath();
+            if (_selectionReticle != null) _selectionReticle.gameObject.SetActive(false);
+
+            if (_searchInputField != null) _searchInputField.text = string.Empty;
+
+            var scroll = _recipeListContent ? _recipeListContent.GetComponentInParent<ScrollRect>() : null;
+            if (scroll != null) scroll.verticalNormalizedPosition = 1f;
+        }
+
+        // drops the built panel, next attach builds fresh
+        internal static void DestroyPanel()
+        {
+            if (_runner != null)
+            {
+                if (_activeBuildRoutine != null) _runner.StopCoroutine(_activeBuildRoutine);
+                if (_activeDropdownRoutine != null) _runner.StopCoroutine(_activeDropdownRoutine);
             }
 
             if (_globalCraftButton != null) _globalCraftButton.onClick.RemoveAllListeners();
             if (_searchInputField != null) _searchInputField.onValueChanged.RemoveAllListeners();
             if (_repeatInputField != null) _repeatInputField.onEndEdit.RemoveAllListeners();
 
+            if (_cookbookRoot != null) UnityEngine.Object.Destroy(_cookbookRoot);
+            _cookbookRoot = null;
+            _runner = null;
+            _eventSystemProvider = null;
+
+            // destroy is deferred, drop refs so a same frame rebuild makes new ones
+            _recipeRowTemplate = null;
+            _pathRowTemplate = null;
+            _ingredientSlotTemplate = null;
+            _droneSlotTemplate = null;
+            _tradeSlotTemplate = null;
+            _ResultSlotTemplate = null;
+            _sharedDropdown = null;
+            _selectionReticle = null;
+            _reticleClip = null;
+            _currentReticleTarget = null;
+            _selectedAnchor = null;
+            _currentHoveredPath = null;
+            _selectedPathUI = null;
+            _cachedDropdownOwner = null;
+            _globalCraftButton = null;
+            _globalCraftButtonText = null;
+            _globalCraftButtonImage = null;
+            _searchInputField = null;
+            _repeatInputField = null;
+
             _recipeRowUIs.Clear();
             _iconCache.Clear();
             _droneIconCache.Clear();
             ClearButtonRefs();
 
-            _currentController = null;
             _skeletonBuilt = false;
             _recipeListContent = null;
             _openRow = null;
@@ -235,7 +362,17 @@ namespace CookBook
             _activeDropdownRoutine = null;
         }
 
-        // vanilla refs die with the panel
+        // vanilla layer and gamepad bindings belong to each vanilla panel
+        private static void BindTopLayer(UILayerKey layer, bool gamepadActive)
+        {
+            foreach (var btn in _cookbookRoot.GetComponentsInChildren<MPButton>(true)) btn.requiredTopLayer = layer;
+            foreach (var ev in _cookbookRoot.GetComponentsInChildren<HGGamepadInputEvent>(true))
+            {
+                ev.requiredTopLayer = layer;
+                ev.enabled = gamepadActive;
+            }
+        }
+
         internal static void ClearButtonRefs()
         {
             _repeatMinusButton = null;
@@ -277,6 +414,9 @@ namespace CookBook
                 var panel = openPanels[i];
                 if (panel && panel.craftingController == target)
                 {
+                    // park ours before the vanilla panel takes it down
+                    if (_cookbookRoot != null && _cookbookRoot.transform.IsChildOf(panel.transform)) Detach();
+
                     var ev = panel.eventFunctions ? panel.eventFunctions : panel.GetComponent<EventFunctions>();
                     if (ev != null) ev.DestroySelf();
                     else UnityEngine.Object.Destroy(panel.gameObject);

@@ -8,6 +8,9 @@ namespace CookBook
 {
     internal static partial class CraftUI
     {
+        // per frame build time so opening stays smooth
+        private const double BuildBudgetMs = 4.0;
+
         internal static void PopulateRecipeList(IReadOnlyList<CraftableEntry> craftables)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -18,16 +21,7 @@ namespace CookBook
 
         internal static IEnumerator PopulateRoutine(IReadOnlyList<CraftableEntry> craftables, System.Diagnostics.Stopwatch sw)
         {
-            var vlg = _recipeListContent.GetComponent<VerticalLayoutGroup>();
-            var canvasGroup = _recipeListContent.GetComponent<CanvasGroup>();
             var scrollRect = _recipeListContent.GetComponentInParent<ScrollRect>();
-
-            if (canvasGroup)
-            {
-                canvasGroup.alpha = 0f;
-                canvasGroup.blocksRaycasts = false;
-            }
-            if (vlg) vlg.enabled = false;
 
             bool hasItems = _recipeListContent.childCount > 0;
             float previousScrollPos = (scrollRect != null && hasItems) ? scrollRect.verticalNormalizedPosition : 1f;
@@ -36,6 +30,13 @@ namespace CookBook
             {
                 _selectionReticle.SetParent(_cookbookRoot.transform, false);
                 _selectionReticle.gameObject.SetActive(false);
+            }
+
+            // half built paths belong to rows about to change
+            if (_activeDropdownRoutine != null)
+            {
+                _runner.StopCoroutine(_activeDropdownRoutine);
+                _activeDropdownRoutine = null;
             }
 
             if (_sharedDropdown != null)
@@ -61,64 +62,69 @@ namespace CookBook
             _selectedAnchor = null;
             _currentHoveredPath = null;
 
-            foreach (Transform child in _recipeListContent) UnityEngine.Object.Destroy(child.gameObject);
             _recipeRowUIs.Clear();
 
+            // let the caller store the routine handle first
             yield return null;
 
-            // Rebuild
-            if (craftables == null || craftables.Count == 0)
-            {
-                if (vlg) vlg.enabled = true;
-                if (canvasGroup)
-                {
-                    canvasGroup.alpha = 1f;
-                    canvasGroup.blocksRaycasts = true;
-                }
-
-                _activeBuildRoutine = null;
-                RebuildNavigation();
-                sw.Stop();
-                _log.LogInfo($"CraftUI: PopulateRecipeList completed in {sw.ElapsedMilliseconds}ms");
-                yield break;
-            }
-
-            int builtCount = 0;
+            // ---------------- Rebind rows ----------------
+            // reuse rows in place, only build what is missing
+            int used = 0;
             RecipeRowRuntime rowToRestore = null;
+            var frame = System.Diagnostics.Stopwatch.StartNew();
 
-            foreach (var entry in craftables)
+            if (craftables != null)
             {
-                if (entry == null) continue;
-
-                var rowGO = CreateRecipeRow(_recipeListContent, entry);
-                var runtime = rowGO.GetComponent<RecipeRowRuntime>();
-
-                _recipeRowUIs.Add(new RecipeRowUI { Entry = entry, RowGO = rowGO });
-
-                if (previousEntry != null && AreEntriesSame(previousEntry, entry))
+                foreach (var entry in craftables)
                 {
-                    rowToRestore = runtime;
+                    if (entry == null) continue;
+
+                    var runtime = used < _recipeListContent.childCount
+                        ? _recipeListContent.GetChild(used).GetComponent<RecipeRowRuntime>()
+                        : CreateRecipeRow(_recipeListContent);
+                    used++;
+                    if (runtime == null) continue;
+
+                    BindRecipeRow(runtime, entry);
+                    _recipeRowUIs.Add(new RecipeRowUI { Entry = entry, RowGO = runtime.gameObject });
+
+                    if (previousEntry != null && AreEntriesSame(previousEntry, entry))
+                    {
+                        rowToRestore = runtime;
+                    }
+
+                    if (frame.Elapsed.TotalMilliseconds > BuildBudgetMs)
+                    {
+                        yield return null;
+                        frame.Restart();
+                    }
                 }
-
-                builtCount++;
-                if (builtCount % 5 == 0) yield return null;
             }
 
-            if (vlg)
+            // leftovers hidden first so layout skips them this frame
+            for (int i = _recipeListContent.childCount - 1; i >= used; i--)
             {
-                vlg.enabled = true;
-                LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeListContent);
-                PixelSnap(_recipeListContent);
+                var child = _recipeListContent.GetChild(i).gameObject;
+                child.SetActive(false);
+                UnityEngine.Object.Destroy(child);
             }
 
-            while (_activeDropdownRoutine != null)
-            {
-                yield return null;
-            }
+            // reused rows keep old filter state
+            RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField ? _searchInputField.text : null);
 
-            if (rowToRestore != null)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeListContent);
+            PixelSnap(_recipeListContent);
+
+            // closed mid build, stay collapsed
+            if (rowToRestore != null && _currentController != null)
             {
                 ToggleRecipeRow(rowToRestore);
+
+                // paths build over frames
+                while (_activeDropdownRoutine != null)
+                {
+                    yield return null;
+                }
 
                 if (_sharedDropdown != null && _sharedDropdown.CurrentOwner == rowToRestore)
                 {
@@ -127,6 +133,7 @@ namespace CookBook
                     foreach (Transform child in _sharedDropdown.View.Content)
                     {
                         if (!lookingForSelection && !lookingForHover) break;
+                        if (!child.gameObject.activeSelf) continue;
                         var pathRuntime = child.GetComponent<PathRowRuntime>();
                         if (pathRuntime == null) continue;
 
@@ -152,17 +159,11 @@ namespace CookBook
                 scrollRect.verticalNormalizedPosition = previousScrollPos;
             }
 
-            if (canvasGroup)
-            {
-                canvasGroup.alpha = 1f;
-                canvasGroup.blocksRaycasts = true;
-            }
-
             _activeBuildRoutine = null;
             RebuildNavigation();
 
             sw.Stop();
-            _log.LogInfo($"CraftUI: PopulateRecipeList (Empty) completed in {sw.ElapsedMilliseconds}ms");
+            _log.LogInfo($"CraftUI: PopulateRecipeList completed in {sw.ElapsedMilliseconds}ms, {used} rows");
         }
 
         internal static void PopulateDropdown(RectTransform contentRoot, RecipeRowRuntime owner)
@@ -181,11 +182,15 @@ namespace CookBook
 
         internal static IEnumerator PopulateDropdownRoutine(RectTransform contentRoot, RecipeRowRuntime owner)
         {
-            foreach (Transform child in contentRoot)
+            // hidden first so layout skips them this frame
+            for (int i = contentRoot.childCount - 1; i >= 0; i--)
             {
-                UnityEngine.Object.Destroy(child.gameObject);
+                var child = contentRoot.GetChild(i).gameObject;
+                child.SetActive(false);
+                UnityEngine.Object.Destroy(child);
             }
 
+            // let the caller store the routine handle first
             yield return null;
 
             if (owner.Entry == null || owner.Entry.Chains == null)
@@ -194,15 +199,17 @@ namespace CookBook
                 yield break;
             }
 
-            int builtCount = 0;
+            var frame = System.Diagnostics.Stopwatch.StartNew();
 
             foreach (var chain in owner.Entry.Chains)
             {
                 CreatePathRow(contentRoot, chain, owner);
 
-                builtCount++;
-
-                if (builtCount % 4 == 0) yield return null;
+                if (frame.Elapsed.TotalMilliseconds > BuildBudgetMs)
+                {
+                    yield return null;
+                    frame.Restart();
+                }
             }
 
             _cachedDropdownOwner = owner;

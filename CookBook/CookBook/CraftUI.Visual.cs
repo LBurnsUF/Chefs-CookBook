@@ -238,6 +238,7 @@ namespace CookBook
             if (!_selectionReticle || !target) return;
 
             _selectionReticle.SetParent(target, false);
+            _reticleClip.SetTarget(target);
 
             _selectionReticle.localPosition = Vector3.zero;
             _selectionReticle.localRotation = Quaternion.identity;
