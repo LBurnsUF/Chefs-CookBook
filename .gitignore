@@ -368,6 +368,7 @@ FodyWeavers.xsd
 *.txt
 *.json
 !CookBook/CookBook.UI/Package/package.json
+!CookBook/CookBook.UI/Package/*.meta
 *.nettrace
 *.css
 *.html

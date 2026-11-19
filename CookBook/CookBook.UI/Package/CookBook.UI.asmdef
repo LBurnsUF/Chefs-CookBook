@@ -1,5 +1,23 @@
 {
   "name": "CookBook.UI",
   "rootNamespace": "CookBook",
-  "autoReferenced": true
+  "references": [
+    "Unity.TextMeshPro",
+    "UnityEngine.UI"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "RoR2.dll"
+  ],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "COOKBOOK_GAME"
+  ],
+  "versionDefines": [
+    {
+      "name": "riskofrain2",
+      "expression": "0.0.0",
+      "define": "COOKBOOK_GAME"
+    }
+  ]
 }

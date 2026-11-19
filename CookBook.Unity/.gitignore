@@ -1,0 +1,34 @@
+# root ignores these, unity needs them
+!*.meta
+!ProjectSettings/ProjectVersion.txt
+
+# unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj
+*.sln
+
+# imported game files, never commit
+Packages/*/
+!Packages/manifest.json
+!Packages/packages-lock.json
+Assets/ThunderKitSettings/
+Assets/ThunderKitSettings.meta
+Assets/RoR2ImportExtensions/
+
+# import rewrites these from the game
+ProjectSettings/*
+!ProjectSettings/ProjectVersion.txt
+
+# game addressables copied by import
+Assets/StreamingAssets/
+Assets/StreamingAssets.meta
+
+# bundle output
+AssetBundles/
+ThunderKit/

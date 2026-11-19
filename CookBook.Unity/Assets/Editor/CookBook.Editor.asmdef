@@ -1,0 +1,11 @@
+{
+  "name": "CookBook.Editor",
+  "rootNamespace": "CookBook.Editor",
+  "references": [
+    "ThunderKit.Core"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": false
+}
