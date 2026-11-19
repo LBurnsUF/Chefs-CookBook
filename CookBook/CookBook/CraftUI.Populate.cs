@@ -124,7 +124,7 @@ namespace CookBook
                 {
                     bool lookingForSelection = _selectedChainData != null;
                     bool lookingForHover = chainToRestoreHover != null;
-                    foreach (Transform child in _sharedDropdown.Content)
+                    foreach (Transform child in _sharedDropdown.View.Content)
                     {
                         if (!lookingForSelection && !lookingForHover) break;
                         var pathRuntime = child.GetComponent<PathRowRuntime>();
@@ -139,7 +139,7 @@ namespace CookBook
                         if (lookingForHover && pathRuntime.Chain == chainToRestoreHover)
                         {
                             _currentHoveredPath = pathRuntime;
-                            AttachReticleTo(pathRuntime.VisualRect);
+                            AttachReticleTo(pathRuntime.View.VisualRect);
                             lookingForHover = false;
                         }
                     }

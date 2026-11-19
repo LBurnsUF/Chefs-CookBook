@@ -27,55 +27,57 @@ namespace CookBook
             runtime.Entry = entry;
             runtime.IsExpanded = false;
 
+            var view = runtime.View;
+
             // ---------------- Label ----------------
-            if (runtime.ItemLabel != null)
+            if (view.ItemLabel != null)
             {
-                runtime.ItemLabel.text = GetEntryDisplayName(entry);
-                runtime.ItemLabel.color = GetEntryColor(entry);
+                view.ItemLabel.text = GetEntryDisplayName(entry);
+                view.ItemLabel.color = GetEntryColor(entry);
             }
 
             // ---------------- MetaData: Depth ----------------
-            if (runtime.DepthText != null) runtime.DepthText.text = $" Min Depth: {entry.MinDepth}";
+            if (view.DepthText != null) view.DepthText.text = $" Min Depth: {entry.MinDepth}";
 
             // ---------------- MetaData: Paths ----------------
-            if (runtime.PathsText != null) runtime.PathsText.text = $"Paths: {entry.Chains.Count}";
+            if (view.PathsText != null) view.PathsText.text = $"Paths: {entry.Chains.Count}";
 
             // ---------------- ItemIcon ----------------
-            if (runtime.ResultIcon != null)
+            if (view.ResultSlot.Icon != null)
             {
                 Sprite iconSprite = GetIcon(entry.ResultIndex);
 
                 if (iconSprite != null)
                 {
-                    runtime.ResultIcon.sprite = iconSprite;
-                    runtime.ResultIcon.color = Color.white;
+                    view.ResultSlot.Icon.sprite = iconSprite;
+                    view.ResultSlot.Icon.color = Color.white;
                 }
                 else
                 {
-                    runtime.ResultIcon.sprite = null;
-                    runtime.ResultIcon.color = new Color(1f, 1f, 1f, 0.1f);
+                    view.ResultSlot.Icon.sprite = null;
+                    view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.1f);
                 }
             }
 
             // ---------------- Stack Text ----------------
-            if (runtime.ResultStackText != null)
+            if (view.ResultSlot.StackText != null)
             {
                 if (entry.ResultCount > 1)
                 {
-                    runtime.ResultStackText.text = entry.ResultCount.ToString();
-                    runtime.ResultStackText.gameObject.SetActive(true);
+                    view.ResultSlot.StackText.text = entry.ResultCount.ToString();
+                    view.ResultSlot.StackText.gameObject.SetActive(true);
                 }
-                else runtime.ResultStackText.gameObject.SetActive(false);
+                else view.ResultSlot.StackText.gameObject.SetActive(false);
             }
 
-            if (runtime.RowTopButton != null)
+            if (view.RowTopButton != null)
             {
-                runtime.RowTopButton.onClick.RemoveAllListeners();
-                runtime.RowTopButton.onClick.AddListener(() => ToggleRecipeRow(runtime));
-                runtime.RowTopButton.HighlightChanged = lit => OnRowTopHighlightChanged(runtime, lit);
+                view.RowTopButton.onClick.RemoveAllListeners();
+                view.RowTopButton.onClick.AddListener(() => ToggleRecipeRow(runtime));
+                view.RowTopButton.HighlightChanged = lit => OnRowTopHighlightChanged(runtime, lit);
             }
 
-            if (runtime.DropdownLayoutElement != null) runtime.DropdownLayoutElement.preferredHeight = 0f;
+            if (view.DropdownLayoutElement != null) view.DropdownLayoutElement.preferredHeight = 0f;
 
             return rowGO;
         }
@@ -83,9 +85,9 @@ namespace CookBook
         // reticle marks gamepad focus on row headers
         internal static void OnRowTopHighlightChanged(RecipeRowRuntime runtime, bool lit)
         {
-            if (!runtime || !runtime.RowTop) return;
-            if (lit) AttachReticleTo(runtime.RowTop);
-            else if (IsReticleAttachedTo(runtime.RowTop))
+            if (!runtime || !runtime.View.RowTop) return;
+            if (lit) AttachReticleTo(runtime.View.RowTop);
+            else if (IsReticleAttachedTo(runtime.View.RowTop))
             {
                 if (_selectedAnchor) AttachReticleTo(_selectedAnchor);
                 else if (_selectionReticle) _selectionReticle.gameObject.SetActive(false);
@@ -109,7 +111,7 @@ namespace CookBook
                 foreach (var ingredient in chain.PhysicalCostSparse)
                 {
                     Sprite icon = GetIcon(ingredient.UnifiedIndex);
-                    if (icon != null) InstantiateSlot(_ingredientSlotTemplate, runtime.VisualRect, icon, ingredient.Count);
+                    if (icon != null) InstantiateSlot(_ingredientSlotTemplate, runtime.View.VisualRect, icon, ingredient.Count);
                 }
             }
 
@@ -118,7 +120,7 @@ namespace CookBook
                 foreach (var trade in chain.AlliedTradeSparse)
                 {
                     Sprite icon = GetIcon(trade.UnifiedIndex);
-                    if (icon != null) InstantiateSlot(_tradeSlotTemplate, runtime.VisualRect, icon, trade.TradesRequired);
+                    if (icon != null) InstantiateSlot(_tradeSlotTemplate, runtime.View.VisualRect, icon, trade.TradesRequired);
                 }
             }
 
@@ -136,7 +138,7 @@ namespace CookBook
                             bool isAlliedDrone = requirement.Owner != null && requirement.Owner != localUser;
                             GameObject template = isAlliedDrone ? _tradeSlotTemplate : _droneSlotTemplate;
 
-                            InstantiateSlot(template, runtime.VisualRect, droneSprite, requirement.Count);
+                            InstantiateSlot(template, runtime.View.VisualRect, droneSprite, requirement.Count);
                         }
                     }
                 }
@@ -151,14 +153,15 @@ namespace CookBook
             GameObject slotGO = UnityEngine.Object.Instantiate(template, parentrow);
             slotGO.SetActive(true);
 
-            var iconImg = slotGO.transform.Find("Icon")?.GetComponent<Image>();
-            if (iconImg) iconImg.sprite = icon;
+            var slot = slotGO.GetComponent<SlotView>();
+            if (!slot) return;
 
-            var stackTmp = slotGO.transform.Find("StackText")?.GetComponent<TextMeshProUGUI>();
-            if (stackTmp)
+            if (slot.Icon) slot.Icon.sprite = icon;
+
+            if (slot.StackText)
             {
-                stackTmp.text = count > 1 ? count.ToString() : string.Empty;
-                stackTmp.gameObject.SetActive(count > 1);
+                slot.StackText.text = count > 1 ? count.ToString() : string.Empty;
+                slot.StackText.gameObject.SetActive(count > 1);
             }
         }
 

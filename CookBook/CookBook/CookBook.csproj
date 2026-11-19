@@ -17,7 +17,6 @@
 
 	<ItemGroup>
 		<Compile Include="ChatNetworkHandler.cs" />
-		<Compile Include="ColorFaderRuntime.cs" />
 		<Compile Include="CookBookUIComponents.cs" />
 		<Compile Include="CraftingExecutionHandler.cs" />
 		<Compile Include="CraftUI.Buttons.cs" />
@@ -49,6 +48,10 @@
 		<Compile Include="TierManager.cs" />
 		<Compile Include="TradeTracker.cs" />
 		<Compile Include="VanillaCraftingTrace.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\CookBook.UI\CookBook.UI.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -31,7 +31,7 @@ namespace CookBook
 
         internal static void FocusCookBook()
         {
-            Selectable target = _selectedPathUI ? _selectedPathUI.pathButton : null;
+            Selectable target = _selectedPathUI ? _selectedPathUI.View.PathButton : null;
             if (!target) target = _navOrder.Count > 0 ? _navOrder[0] : _categoryButton;
             SelectForGamepad(target);
         }
@@ -68,24 +68,24 @@ namespace CookBook
             {
                 if (!row.RowGO || !row.RowGO.activeSelf) continue;
                 var runtime = row.RowGO.GetComponent<RecipeRowRuntime>();
-                if (!runtime || !runtime.RowTopButton) continue;
+                if (!runtime || !runtime.View.RowTopButton) continue;
 
-                _navOrder.Add(runtime.RowTopButton);
+                _navOrder.Add(runtime.View.RowTopButton);
 
-                if (runtime.IsExpanded && _sharedDropdown && _sharedDropdown.CurrentOwner == runtime && _sharedDropdown.Content)
+                if (runtime.IsExpanded && _sharedDropdown && _sharedDropdown.CurrentOwner == runtime && _sharedDropdown.View.Content)
                 {
-                    foreach (Transform child in _sharedDropdown.Content)
+                    foreach (Transform child in _sharedDropdown.View.Content)
                     {
                         if (!child.gameObject.activeSelf) continue;
                         var path = child.GetComponent<PathRowRuntime>();
-                        if (path && path.pathButton) _navOrder.Add(path.pathButton);
+                        if (path && path.View.PathButton) _navOrder.Add(path.View.PathButton);
                     }
                 }
             }
 
             Selectable first = _navOrder.Count > 0 ? _navOrder[0] : null;
             Selectable last = _navOrder.Count > 0 ? _navOrder[_navOrder.Count - 1] : null;
-            Selectable footerUp = _selectedPathUI && _selectedPathUI.pathButton ? _selectedPathUI.pathButton : last;
+            Selectable footerUp = _selectedPathUI && _selectedPathUI.View.PathButton ? _selectedPathUI.View.PathButton : last;
             if (!footerUp) footerUp = _categoryButton;
 
             for (int i = 0; i < _navOrder.Count; i++)
@@ -95,7 +95,7 @@ namespace CookBook
                 SetNav(s,
                     up: i > 0 ? _navOrder[i - 1] : _categoryButton,
                     down: i < _navOrder.Count - 1 ? _navOrder[i + 1] : _globalCraftButton,
-                    left: path && path.OwnerRow ? path.OwnerRow.RowTopButton : null,
+                    left: path && path.OwnerRow ? path.OwnerRow.View.RowTopButton : null,
                     right: path ? _globalCraftButton : null);
             }
 

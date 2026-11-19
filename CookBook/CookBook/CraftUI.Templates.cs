@@ -355,7 +355,7 @@ namespace CookBook
             float innerHeight = rowTopHeightPx - (topPadPx + bottomPadPx);
 
             // ---------------- RecipeRow root ----------------
-            GameObject rowGO = CreateUIObject("RecipeRowTemplate", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(RecipeRowRuntime));
+            GameObject rowGO = CreateUIObject("RecipeRowTemplate", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(RecipeRowView), typeof(RecipeRowRuntime));
 
             var rowRT = rowGO.GetComponent<RectTransform>();
             var rowVLG = rowGO.GetComponent<VerticalLayoutGroup>();
@@ -543,22 +543,24 @@ namespace CookBook
             mountLE.flexibleHeight = 0f;
             mountLE.flexibleWidth = 1f;
 
+            // ---------------- View wiring ----------------
+            var view = rowGO.GetComponent<RecipeRowView>();
+            view.RowTransform = rowRT;
+            view.RowTop = rowTopRT;
+            view.RowLayoutElement = rowLE;
+            view.RowTopButton = rowTopBtn;
+            view.ArrowText = arrowTMP;
+            view.DropdownMountPoint = mountRT;
+            view.DropdownLayoutElement = mountLE;
+            view.ResultSlot = slotGO.GetComponent<SlotView>();
+            view.ItemLabel = labelTMP;
+            view.DepthText = depthTMP;
+            view.PathsText = pathsTMP;
+
             // ---------------- Runtime wiring ----------------
             var runtime = rowGO.GetComponent<RecipeRowRuntime>();
             runtime.Entry = null;
-            runtime.RowTransform = rowRT;
-            runtime.RowTop = rowTopRT;
-            runtime.RowLayoutElement = rowLE;
-            runtime.RowTopButton = rowTopBtn;
-            runtime.ArrowText = arrowTMP;
-            runtime.DropdownMountPoint = mountRT;
-            runtime.DropdownLayoutElement = mountLE;
-            runtime.ResultIcon = slotGO.transform.Find("Icon").GetComponent<Image>();
-            runtime.ResultStackText = slotGO.transform.Find("StackText").GetComponent<TextMeshProUGUI>();
-            runtime.ItemLabel = labelTMP;
-            runtime.DepthText = depthTMP;
-            runtime.PathsText = pathsTMP;
-
+            runtime.View = view;
             runtime.CollapsedHeight = rowRT.sizeDelta.y;
             runtime.IsExpanded = false;
 
@@ -577,12 +579,12 @@ namespace CookBook
             float totalRowHeightPx = visualHeightPx + spacingPx;
             float paddingY = RoundToEven(spacingPx / 2f);
 
-            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(CookBookButton), typeof(DeselectOnPointerExit), typeof(PathRowRuntime));
+            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(CookBookButton), typeof(DeselectOnPointerExit), typeof(PathRowView), typeof(PathRowRuntime));
 
             var rowRT = (RectTransform)rowGO.transform;
             var rowLE = rowGO.GetComponent<LayoutElement>();
             var rowHitbox = rowGO.GetComponent<Image>();
-            var runtime = rowGO.GetComponent<PathRowRuntime>();
+            var view = rowGO.GetComponent<PathRowView>();
             var pathButton = rowGO.GetComponent<CookBookButton>();
 
             rowRT.SetParent(_cookbookRoot.transform, false);
@@ -631,9 +633,11 @@ namespace CookBook
             visualImg.raycastTarget = false;
 
             AddBorderTapered(visualRT, new Color32(209, 209, 210, 200), top: 1f, bottom: 1f);
-            runtime.BackgroundImage = visualImg;
-            runtime.VisualRect = visualRT;
-            runtime.pathButton = pathButton;
+            view.BackgroundImage = visualImg;
+            view.VisualRect = visualRT;
+            view.PathButton = pathButton;
+            view.Fader = visualGO.GetComponent<ColorFaderRuntime>();
+            rowGO.GetComponent<PathRowRuntime>().View = view;
 
             _pathRowTemplate = rowGO;
         }
@@ -642,7 +646,7 @@ namespace CookBook
         {
             if (_sharedDropdown != null) return;
 
-            GameObject drawerGO = CreateUIObject("SharedDropdown", typeof(RectTransform), typeof(Image), typeof(NestedScrollRect), typeof(RecipeDropdownRuntime));
+            GameObject drawerGO = CreateUIObject("SharedDropdown", typeof(RectTransform), typeof(Image), typeof(NestedScrollRect), typeof(DropdownView), typeof(RecipeDropdownRuntime));
 
             var drawerRT = drawerGO.GetComponent<RectTransform>();
             var img = drawerGO.GetComponent<Image>();
@@ -708,9 +712,10 @@ namespace CookBook
 
             contentGO.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            _sharedDropdown.ScrollRect = scroll;
-            _sharedDropdown.Content = contentRT;
-            _sharedDropdown.Background = drawerRT;
+            var view = drawerGO.GetComponent<DropdownView>();
+            view.ScrollRect = scroll;
+            view.Content = contentRT;
+            _sharedDropdown.View = view;
             drawerGO.transform.SetParent(_cookbookRoot.transform, false);
             drawerGO.AddComponent<ScrollFollowSelection>().Scroll = scroll;
             drawerGO.SetActive(false);
@@ -756,7 +761,7 @@ namespace CookBook
             float SlotHeightPx = rowTopHeightPx - (topPadPx + bottomPadPx);
             float iconInsetPx = RoundToEven(SlotHeightPx * 0.125f);
 
-            var slotGO = CreateUIObject("ResultSlotTemplate", typeof(RectTransform), typeof(LayoutElement));
+            var slotGO = CreateUIObject("ResultSlotTemplate", typeof(RectTransform), typeof(LayoutElement), typeof(SlotView));
             var slotRT = (RectTransform)slotGO.transform;
             var slotLE = slotGO.GetComponent<LayoutElement>();
 
@@ -847,6 +852,10 @@ namespace CookBook
             stackLE.ignoreLayout = true;
             stackGO.SetActive(true);
 
+            var view = slotGO.GetComponent<SlotView>();
+            view.Icon = iconImg;
+            view.StackText = stackTMP;
+
             _ResultSlotTemplate = slotGO;
         }
 
@@ -862,7 +871,7 @@ namespace CookBook
         {
             float IngredientHeightPx = RoundToEven(IngredientHeightNorm * _panelHeight);
             float iconInsetPx = RoundToEven(IngredientHeightNorm * _panelHeight * 0.1f);
-            var slotGO = CreateUIObject("IngredientSlotTemplate", typeof(RectTransform), typeof(LayoutElement));
+            var slotGO = CreateUIObject("IngredientSlotTemplate", typeof(RectTransform), typeof(LayoutElement), typeof(SlotView));
             var slotRT = (RectTransform)slotGO.transform;
             var slotLE = slotGO.GetComponent<LayoutElement>();
 
@@ -936,6 +945,10 @@ namespace CookBook
             stackGO.SetActive(false);
 
             AddBorder(bgRT, new Color32(209, 209, 210, 200), 1f, 1f, 1f, 1f);
+
+            var view = slotGO.GetComponent<SlotView>();
+            view.Icon = iconImg;
+            view.StackText = stackTMP;
             return slotGO;
         }
 

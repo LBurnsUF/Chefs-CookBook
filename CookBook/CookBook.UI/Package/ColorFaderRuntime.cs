@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace CookBook
 {
-    internal sealed class ColorFaderRuntime : MonoBehaviour
+    public sealed class ColorFaderRuntime : MonoBehaviour
     {
         private Graphic _targetGraphic;
         private Coroutine _activeRoutine;

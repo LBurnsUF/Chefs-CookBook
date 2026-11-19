@@ -78,7 +78,7 @@ namespace CookBook
         {
             if (_currentHoveredPath == row) _currentHoveredPath = null;
             if (_selectedPathUI == row) _selectedPathUI = null;
-            if (_selectedAnchor == row?.VisualRect) _selectedAnchor = null;
+            if (_selectedAnchor == row?.View.VisualRect) _selectedAnchor = null;
         }
     }
 }

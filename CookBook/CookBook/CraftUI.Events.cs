@@ -65,7 +65,7 @@ namespace CookBook
             _selectedPathUI.SetSelected(true);
             _selectedChainData = clickedPath.Chain;
 
-            _selectedAnchor = clickedPath.VisualRect;
+            _selectedAnchor = clickedPath.View.VisualRect;
             AttachReticleTo(_selectedAnchor);
 
             if (_globalCraftButton)
@@ -133,6 +133,7 @@ namespace CookBook
         {
             if (runtime.Entry == null || runtime.Entry.Chains == null) return;
 
+            var view = runtime.View;
             int chainCount = runtime.Entry.Chains.Count;
 
             if (chainCount != 0)
@@ -143,24 +144,26 @@ namespace CookBook
 
                 float targetHeight = (visibleRows * rowHeightPx) + visibleRows * spacingPx + spacingPx;
 
-                if (runtime.DropdownLayoutElement != null) runtime.DropdownLayoutElement.preferredHeight = targetHeight;
+                if (view.DropdownLayoutElement != null) view.DropdownLayoutElement.preferredHeight = targetHeight;
                 else DebugLog.Trace(_log, "DropDownLayoutElement was null, cant expand row.");
 
-                if (runtime.RowLayoutElement != null) runtime.RowLayoutElement.preferredHeight = runtime.CollapsedHeight + targetHeight;
+                if (view.RowLayoutElement != null) view.RowLayoutElement.preferredHeight = runtime.CollapsedHeight + targetHeight;
                 else DebugLog.Trace(_log, "RowLayoutElement was null, cant expand row.");
 
                 if (_sharedDropdown != null) _sharedDropdown.OpenFor(runtime);
             }
 
             runtime.IsExpanded = true;
-            LayoutRebuilder.ForceRebuildLayoutImmediate(runtime.RowTransform);
-            PixelSnap(runtime.RowTransform);
-            PixelSnap(runtime.RowTop);
-            if (runtime.ArrowText != null) runtime.ArrowText.text = "v";
+            LayoutRebuilder.ForceRebuildLayoutImmediate(view.RowTransform);
+            PixelSnap(view.RowTransform);
+            PixelSnap(view.RowTop);
+            if (view.ArrowText != null) view.ArrowText.text = "v";
         }
 
         internal static void CollapseRow(RecipeRowRuntime runtime)
         {
+            var view = runtime.View;
+
             if (_sharedDropdown != null && _sharedDropdown.CurrentOwner == runtime)
             {
                 if (_selectionReticle != null && _selectionReticle.IsChildOf(_sharedDropdown.transform))
@@ -174,17 +177,17 @@ namespace CookBook
 
             if (_selectedPathUI != null && _selectedPathUI.OwnerRow == runtime) DeselectCurrentPath();
 
-            if (runtime.DropdownLayoutElement != null) runtime.DropdownLayoutElement.preferredHeight = 0f;
+            if (view.DropdownLayoutElement != null) view.DropdownLayoutElement.preferredHeight = 0f;
             else DebugLog.Trace(_log, "DropDownLayoutElement was null, cant retract row.");
 
-            if (runtime.RowLayoutElement != null) runtime.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
+            if (view.RowLayoutElement != null) view.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
             else DebugLog.Trace(_log, "RowLayoutElement was null, cant retract row.");
 
             runtime.IsExpanded = false;
-            LayoutRebuilder.ForceRebuildLayoutImmediate(runtime.RowTransform);
-            PixelSnap(runtime.RowTransform);
-            PixelSnap(runtime.RowTop);
-            if (runtime.ArrowText != null) runtime.ArrowText.text = ">";
+            LayoutRebuilder.ForceRebuildLayoutImmediate(view.RowTransform);
+            PixelSnap(view.RowTransform);
+            PixelSnap(view.RowTop);
+            if (view.ArrowText != null) view.ArrowText.text = ">";
         }
 
         // Path Selection Logic
