@@ -367,6 +367,7 @@ FodyWeavers.xsd
 /Spy
 *.txt
 *.json
+!CookBook/CookBook.UI/Package/package.json
 *.nettrace
 *.css
 *.html

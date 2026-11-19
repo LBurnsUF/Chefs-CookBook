@@ -1,0 +1,7 @@
+{
+  "name": "com.rainorshine.cookbook.ui",
+  "version": "1.4.0",
+  "displayName": "CookBook UI",
+  "description": "View components shared by the CookBook plugin and its UI prefabs.",
+  "unity": "2021.3"
+}
