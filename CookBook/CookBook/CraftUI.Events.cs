@@ -166,6 +166,13 @@ namespace CookBook
 
             if (_sharedDropdown != null && _sharedDropdown.CurrentOwner == runtime)
             {
+                // a half built dropdown would keep building while hidden
+                if (_activeDropdownRoutine != null)
+                {
+                    _runner.StopCoroutine(_activeDropdownRoutine);
+                    _activeDropdownRoutine = null;
+                }
+
                 if (_selectionReticle != null && _selectionReticle.IsChildOf(_sharedDropdown.transform))
                 {
                     _selectionReticle.SetParent(_cookbookRoot.transform, false);

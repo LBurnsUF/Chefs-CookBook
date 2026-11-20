@@ -18,6 +18,7 @@ namespace CookBook
             InstallGamepadBindings(_cookbookRoot);
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();
+            EnsureSlotPool();
             EnsureRecipeRowTemplate();
             EnsurePathRowTemplate();
             EnsureSharedDropdown();
@@ -196,6 +197,17 @@ namespace CookBook
             _ingredientSlotTemplate = InstantiateBundleTemplate("PhysicalSlot");
             _droneSlotTemplate = InstantiateBundleTemplate("DroneSlot");
             _tradeSlotTemplate = InstantiateBundleTemplate("TradeSlot");
+        }
+
+        // inactive holder for pooled dropdown slots
+        internal static void EnsureSlotPool()
+        {
+            if (_slotPoolRoot != null) return;
+
+            var poolGO = new GameObject("SlotPool");
+            poolGO.SetActive(false);
+            _slotPoolRoot = poolGO.transform;
+            _slotPoolRoot.SetParent(_cookbookRoot.transform, false);
         }
 
         //==================== Bundle ====================

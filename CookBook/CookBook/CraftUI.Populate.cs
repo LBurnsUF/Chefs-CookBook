@@ -49,6 +49,8 @@ namespace CookBook
 
             CraftableEntry previousEntry = null;
             RecipeChain chainToRestoreHover = null;
+            // collapsing the open row below clears the selection
+            RecipeChain chainToRestoreSelection = _selectedChainData;
 
             if (_openRow != null)
             {
@@ -128,7 +130,7 @@ namespace CookBook
 
                 if (_sharedDropdown != null && _sharedDropdown.CurrentOwner == rowToRestore)
                 {
-                    bool lookingForSelection = _selectedChainData != null;
+                    bool lookingForSelection = chainToRestoreSelection != null;
                     bool lookingForHover = chainToRestoreHover != null;
                     foreach (Transform child in _sharedDropdown.View.Content)
                     {
@@ -137,13 +139,13 @@ namespace CookBook
                         var pathRuntime = child.GetComponent<PathRowRuntime>();
                         if (pathRuntime == null) continue;
 
-                        if (lookingForSelection && pathRuntime.Chain == _selectedChainData)
+                        if (lookingForSelection && AreChainsSame(pathRuntime.Chain, chainToRestoreSelection))
                         {
                             OnPathSelected(pathRuntime);
                             lookingForSelection = false;
                         }
 
-                        if (lookingForHover && pathRuntime.Chain == chainToRestoreHover)
+                        if (lookingForHover && AreChainsSame(pathRuntime.Chain, chainToRestoreHover))
                         {
                             _currentHoveredPath = pathRuntime;
                             AttachReticleTo(pathRuntime.View.VisualRect);
@@ -182,13 +184,8 @@ namespace CookBook
 
         internal static IEnumerator PopulateDropdownRoutine(RectTransform contentRoot, RecipeRowRuntime owner)
         {
-            // hidden first so layout skips them this frame
-            for (int i = contentRoot.childCount - 1; i >= 0; i--)
-            {
-                var child = contentRoot.GetChild(i).gameObject;
-                child.SetActive(false);
-                UnityEngine.Object.Destroy(child);
-            }
+            // hidden first so layout skips them this frame, rebound below, leftovers stay hidden
+            for (int i = contentRoot.childCount - 1; i >= 0; i--) contentRoot.GetChild(i).gameObject.SetActive(false);
 
             // let the caller store the routine handle first
             yield return null;
@@ -200,10 +197,11 @@ namespace CookBook
             }
 
             var frame = System.Diagnostics.Stopwatch.StartNew();
+            int used = 0;
 
             foreach (var chain in owner.Entry.Chains)
             {
-                CreatePathRow(contentRoot, chain, owner);
+                BindPathRow(contentRoot, used++, chain, owner);
 
                 if (frame.Elapsed.TotalMilliseconds > BuildBudgetMs)
                 {

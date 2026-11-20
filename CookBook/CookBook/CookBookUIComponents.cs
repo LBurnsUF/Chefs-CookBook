@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using static CookBook.CraftPlanner;
 
@@ -29,6 +30,9 @@ namespace CookBook
         internal RecipeRowRuntime OwnerRow;
         internal RecipeChain Chain;
         public PathRowView View;
+
+        // slots on loan from the pool
+        internal readonly List<(GameObject Template, SlotView Slot)> Slots = new();
 
         internal bool isSelected;
         internal bool isHovered;

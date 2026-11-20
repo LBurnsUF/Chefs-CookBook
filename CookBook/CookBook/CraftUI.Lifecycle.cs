@@ -349,6 +349,7 @@ namespace CookBook
             _currentHoveredPath = null;
             _selectedPathUI = null;
             _cachedDropdownOwner = null;
+            _slotPoolRoot = null;
             _globalCraftButton = null;
             _globalCraftButtonText = null;
             _globalCraftButtonImage = null;
@@ -356,6 +357,7 @@ namespace CookBook
             _repeatInputField = null;
 
             _recipeRowUIs.Clear();
+            _slotPools.Clear();
             ClearButtonRefs();
 
             _skeletonBuilt = false;

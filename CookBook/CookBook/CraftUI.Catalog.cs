@@ -1,4 +1,5 @@
 ﻿using RoR2;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using static CookBook.CraftPlanner;
@@ -78,6 +79,38 @@ namespace CookBook
         {
             if (a == null || b == null) return false;
             return a.ResultIndex == b.ResultIndex && a.ResultCount == b.ResultCount;
+        }
+
+        // chains are rebuilt every pass, so match by steps and costs
+        internal static bool AreChainsSame(RecipeChain a, RecipeChain b)
+        {
+            if (a == null || b == null) return false;
+            if (a == b) return true;
+            if (a.Depth != b.Depth || a.ResultCount != b.ResultCount) return false;
+
+            var stepsA = a.Steps;
+            var stepsB = b.Steps;
+            for (int i = 0; i < stepsA.Count; i++)
+            {
+                if (stepsA[i] != stepsB[i]) return false;
+            }
+
+            return AreCostsSame(a.PhysicalCostSparse, b.PhysicalCostSparse)
+                && AreCostsSame(a.DroneCostSparse, b.DroneCostSparse)
+                && AreCostsSame(a.AlliedTradeSparse, b.AlliedTradeSparse);
+        }
+
+        // null and empty both mean no cost
+        private static bool AreCostsSame<T>(T[] a, T[] b)
+        {
+            int count = a?.Length ?? 0;
+            if (count != (b?.Length ?? 0)) return false;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!EqualityComparer<T>.Default.Equals(a[i], b[i])) return false;
+            }
+            return true;
         }
     }
 }

@@ -64,6 +64,10 @@ namespace CookBook
         internal static RecipeDropdownRuntime _sharedDropdown;
         internal static RecipeRowRuntime _cachedDropdownOwner;
 
+        // dropdown slots wait in SlotPool between path rows, one stack per template
+        internal static readonly Dictionary<GameObject, Stack<SlotView>> _slotPools = new();
+        internal static Transform _slotPoolRoot;
+
         internal static PathRowRuntime _currentHoveredPath;
         internal static PathRowRuntime _selectedPathUI;
 

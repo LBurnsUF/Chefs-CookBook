@@ -1,4 +1,5 @@
 ﻿using RoR2;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
@@ -100,23 +101,29 @@ namespace CookBook
             }
         }
 
-        internal static GameObject CreatePathRow(RectTransform parent, RecipeChain chain, RecipeRowRuntime owner)
+        // reuses the path row at index, its slots come from the pool
+        internal static void BindPathRow(RectTransform parent, int index, RecipeChain chain, RecipeRowRuntime owner)
         {
-            if (_pathRowTemplate == null) return null;
+            if (_pathRowTemplate == null) return;
 
-            GameObject pathRowGO = UnityEngine.Object.Instantiate(_pathRowTemplate, parent);
-            pathRowGO.name = "PathRow";
-            pathRowGO.SetActive(true);
+            PathRowRuntime runtime;
+            if (index < parent.childCount) runtime = parent.GetChild(index).GetComponent<PathRowRuntime>();
+            else
+            {
+                GameObject pathRowGO = UnityEngine.Object.Instantiate(_pathRowTemplate, parent);
+                pathRowGO.name = "PathRow";
+                runtime = pathRowGO.GetComponent<PathRowRuntime>();
+            }
 
-            var runtime = pathRowGO.GetComponent<PathRowRuntime>();
-            if (runtime != null) runtime.Init(owner, chain);
-            else _log.LogError("PathRowTemplate missing PathRowRuntime component.");
+            runtime.gameObject.SetActive(true);
+            runtime.Init(owner, chain);
+            ReleaseSlots(runtime);
 
             if (chain.PhysicalCostSparse != null)
             {
                 foreach (var ingredient in chain.PhysicalCostSparse)
                 {
-                    if (TryGetIcon(ingredient.UnifiedIndex, out var iconRef, out var icon)) InstantiateSlot(_ingredientSlotTemplate, runtime.View.VisualRect, iconRef, icon, ingredient.Count);
+                    if (TryGetIcon(ingredient.UnifiedIndex, out var iconRef, out var icon)) AddSlot(runtime, _ingredientSlotTemplate, iconRef, icon, ingredient.Count);
                 }
             }
 
@@ -124,7 +131,7 @@ namespace CookBook
             {
                 foreach (var trade in chain.AlliedTradeSparse)
                 {
-                    if (TryGetIcon(trade.UnifiedIndex, out var iconRef, out var icon)) InstantiateSlot(_tradeSlotTemplate, runtime.View.VisualRect, iconRef, icon, trade.TradesRequired);
+                    if (TryGetIcon(trade.UnifiedIndex, out var iconRef, out var icon)) AddSlot(runtime, _tradeSlotTemplate, iconRef, icon, trade.TradesRequired);
                 }
             }
 
@@ -141,23 +148,29 @@ namespace CookBook
                             bool isAlliedDrone = requirement.Owner != null && requirement.Owner != localUser;
                             GameObject template = isAlliedDrone ? _tradeSlotTemplate : _droneSlotTemplate;
 
-                            InstantiateSlot(template, runtime.View.VisualRect, droneRef, droneSprite, requirement.Count);
+                            AddSlot(runtime, template, droneRef, droneSprite, requirement.Count);
                         }
                     }
                 }
             }
-
-            return pathRowGO;
         }
 
-        internal static void InstantiateSlot(GameObject template, Transform parentrow, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
+        // pooled slot when one is free, a new one otherwise
+        internal static void AddSlot(PathRowRuntime row, GameObject template, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
         {
             if (template == null) return;
-            GameObject slotGO = UnityEngine.Object.Instantiate(template, parentrow);
-            slotGO.SetActive(true);
+            if (!_slotPools.TryGetValue(template, out var pool)) _slotPools[template] = pool = new Stack<SlotView>();
 
-            var slot = slotGO.GetComponent<SlotView>();
-            if (!slot) return;
+            SlotView slot;
+            if (pool.Count > 0)
+            {
+                slot = pool.Pop();
+                slot.transform.SetParent(row.View.VisualRect, false);
+            }
+            else slot = UnityEngine.Object.Instantiate(template, row.View.VisualRect).GetComponent<SlotView>();
+
+            slot.gameObject.SetActive(true);
+            row.Slots.Add((template, slot));
 
             slot.IconLoader.SetAssetOrDirectReference(iconRef, icon);
 
@@ -166,6 +179,18 @@ namespace CookBook
                 slot.StackText.text = count > 1 ? count.ToString() : string.Empty;
                 slot.StackText.gameObject.SetActive(count > 1);
             }
+        }
+
+        // slots go back to their template's pool
+        internal static void ReleaseSlots(PathRowRuntime row)
+        {
+            foreach (var (template, slot) in row.Slots)
+            {
+                slot.gameObject.SetActive(false);
+                slot.transform.SetParent(_slotPoolRoot, false);
+                _slotPools[template].Push(slot);
+            }
+            row.Slots.Clear();
         }
 
         internal static GameObject InstantiateLayer(GameObject template, Transform parent)
