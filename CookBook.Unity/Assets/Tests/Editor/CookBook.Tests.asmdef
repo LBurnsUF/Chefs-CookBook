@@ -1,0 +1,30 @@
+{
+  "name": "CookBook.Tests",
+  "rootNamespace": "CookBook.Tests",
+  "references": [
+    "CookBook.UI",
+    "Unity.TextMeshPro",
+    "UnityEngine.UI",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS",
+    "COOKBOOK_GAME"
+  ],
+  "versionDefines": [
+    {
+      "name": "riskofrain2",
+      "expression": "0.0.0",
+      "define": "COOKBOOK_GAME"
+    }
+  ]
+}

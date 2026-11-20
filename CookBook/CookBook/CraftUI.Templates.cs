@@ -25,6 +25,9 @@ namespace CookBook
             BuildSharedHoverRect();
 
             _skeletonBuilt = true;
+#if COOKBOOK_PERF
+            ValidateCodeTemplates();
+#endif
         }
 
 
@@ -965,5 +968,24 @@ namespace CookBook
             return slotGO;
         }
 
+#if COOKBOOK_PERF
+        //==================== Validation ====================
+        // code templates must pass the same checks as bundle prefabs
+        private static void ValidateCodeTemplates()
+        {
+            var errors = new System.Collections.Generic.List<string>();
+            errors.AddRange(ViewValidator.Validate(_recipeRowTemplate, typeof(RecipeRowView)));
+            errors.AddRange(ViewValidator.Validate(_pathRowTemplate, typeof(PathRowView)));
+            errors.AddRange(ViewValidator.Validate(_sharedDropdown ? _sharedDropdown.gameObject : null, typeof(DropdownView)));
+            errors.AddRange(ViewValidator.Validate(_ResultSlotTemplate, typeof(SlotView)));
+            errors.AddRange(ViewValidator.Validate(_ingredientSlotTemplate, typeof(SlotView)));
+            errors.AddRange(ViewValidator.Validate(_droneSlotTemplate, typeof(SlotView)));
+            errors.AddRange(ViewValidator.Validate(_tradeSlotTemplate, typeof(SlotView)));
+            errors.AddRange(ViewValidator.Validate(_selectionReticle ? _selectionReticle.gameObject : null, null));
+
+            if (errors.Count == 0) _log.LogInfo("CraftUI: code templates validate.");
+            else _log.LogWarning("CraftUI: code template refs unset\n  " + string.Join("\n  ", errors));
+        }
+#endif
     }
 }

@@ -1,0 +1,21 @@
+{
+  "name": "CookBook.Editor.Bundles",
+  "rootNamespace": "CookBook.Editor",
+  "references": [
+    "CookBook.UI"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "COOKBOOK_GAME"
+  ],
+  "versionDefines": [
+    {
+      "name": "riskofrain2",
+      "expression": "0.0.0",
+      "define": "COOKBOOK_GAME"
+    }
+  ]
+}

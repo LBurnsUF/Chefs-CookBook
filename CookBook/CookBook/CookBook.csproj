@@ -47,6 +47,7 @@
 		<Compile Include="StateController.cs" />
 		<Compile Include="TierManager.cs" />
 		<Compile Include="TradeTracker.cs" />
+		<Compile Include="UIBundle.cs" />
 		<Compile Include="VanillaCraftingTrace.cs" />
 	</ItemGroup>
 

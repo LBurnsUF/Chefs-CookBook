@@ -147,6 +147,7 @@ namespace CookBook
             DialogueHooks.Init(Log); // Initialize Chef Dialogue Hooks
             ObjectiveTracker.Init();
             CraftUI.Init(Log); // Initialize craft UI injection
+            UIBundle.Init(Log, System.IO.Path.GetDirectoryName(Info.Location)); // Prefabs, code templates until loaded
 
             // VanillaCraftingTrace.Init(Log);
             // RecipeTrackerUI.Init(Log);
@@ -241,6 +242,7 @@ namespace CookBook
             StateController.Shutdown();
             DialogueHooks.Shutdown();
             CraftUI.Shutdown();
+            UIBundle.Shutdown();
             ObjectiveTracker.Shutdown();
             ChatNetworkHandler.ShutDown();
         }

@@ -6,7 +6,7 @@ namespace CookBook
 {
     // override sorting skips parent RectMask2Ds, clip to them by hand
     [RequireComponent(typeof(RectMask2D))]
-    public class ReticleClip : MonoBehaviour
+    public sealed class ReticleClip : MonoBehaviour
     {
         public RectTransform Frame;
 
