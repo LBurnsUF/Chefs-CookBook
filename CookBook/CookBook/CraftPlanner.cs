@@ -838,28 +838,36 @@ namespace CookBook
             int inputWeight = GetWeightedCost(chain, chain.ResultIndex);
             int value = chain.ResultSurplus * GetItemWeight(chain.ResultIndex);
 
-            return ExceedsEfficiencyBudget(inputWeight, value, chain.LastStep);
+            return ExceedsEfficiencyBudget(inputWeight, value, chain.LastStep, chain.Parent);
         }
 
         /// <summary>
         /// inefficient if input > max(2 * value, face cost of lastStep), both sides net of result-type items
         /// face cost floor lets lossy recipes through (Pearl + broken Watch, aspects)
         /// </summary>
-        private static bool ExceedsEfficiencyBudget(int inputWeight, int value, ChefRecipe lastStep)
+        private bool ExceedsEfficiencyBudget(int inputWeight, int value, ChefRecipe lastStep, RecipeChain parent)
         {
             if (value <= 0) return true;
-            int budget = Math.Max(value * 2, GetRecipeFaceCost(lastStep));
-            return inputWeight > budget;
+            if (inputWeight <= value * 2) return false;
+            return inputWeight > GetRecipeFaceCost(lastStep, parent);
         }
 
         // weighted ingA + ingB, 0 for trades
-        private static int GetRecipeFaceCost(ChefRecipe recipe)
+        private int GetRecipeFaceCost(ChefRecipe recipe, RecipeChain parent)
         {
             if (recipe == null) return 0;
             int cost = 0;
-            if (recipe.IngA >= 0 && recipe.CountA > 0) cost += GetItemWeight(recipe.IngA) * recipe.CountA;
-            if (recipe.HasB && recipe.IngB >= 0) cost += GetItemWeight(recipe.IngB) * recipe.CountB;
+            if (recipe.IngA >= 0 && recipe.CountA > 0) cost += GetIngredientFaceCost(recipe.IngA, recipe.CountA, parent);
+            if (recipe.HasB && recipe.IngB >= 0) cost += GetIngredientFaceCost(recipe.IngB, recipe.CountB, parent);
             return cost;
+        }
+
+        // a crafted ingredient counts at what the chain spent on it
+        private int GetIngredientFaceCost(int idx, int count, RecipeChain parent)
+        {
+            int face = GetItemWeight(idx) * count;
+            if (parent == null || parent.ResultIndex != idx) return face;
+            return Math.Max(face, GetWeightedCost(parent, idx));
         }
 
         // ------------------- Dominance Gating ------------------
@@ -1470,7 +1478,7 @@ namespace CookBook
             int resultSurplus = (existingChain?.GetNetSurplusFor(nextRecipe.ResultIndex) ?? 0) + nextRecipe.ResultCount;
             int value = resultSurplus * GetItemWeight(nextRecipe.ResultIndex);
 
-            return ExceedsEfficiencyBudget(inputWeight, value, nextRecipe);
+            return ExceedsEfficiencyBudget(inputWeight, value, nextRecipe, existingChain);
         }
 
         private (Ingredient[] phys, (int scrapIdx, int need)[] drone, TradeRequirement[] trades)?
