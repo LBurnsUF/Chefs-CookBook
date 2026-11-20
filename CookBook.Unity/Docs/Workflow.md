@@ -48,7 +48,7 @@ Unity must be closed for the batch commands. Opening the project in the editor l
 
 ## In game
 
-- The log line `UIBundle: 8/8 prefabs loaded` means the bundle is in use.
+- The log line `UIBundle: 9/9 prefabs loaded` means the bundle is in use.
 - A missing or broken prefab logs why and falls back to its code-built version.
 - No bundle at all means everything is code-built.
 - Debug builds also check the code-built templates and log any empty refs.
@@ -60,3 +60,4 @@ Unity must be closed for the batch commands. Opening the project in the editor l
 - [Dropdown](Dropdown.md)
 - [RecipeRow](RecipeRow.md)
 - [Reticle](Reticle.md)
+- [Panel](Panel.md)

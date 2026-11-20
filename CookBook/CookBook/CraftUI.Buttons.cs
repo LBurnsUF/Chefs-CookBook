@@ -163,6 +163,19 @@ namespace CookBook
             return new ButtonParts { Button = btn, Label = label, Image = img, IsCanon = false };
         }
 
+        // canon buttons fill a slot the panel leaves for them
+        internal static ButtonParts CreateSlotButton(string name, RectTransform slot, string text)
+        {
+            var parts = CreateCanonButton(name, slot, text);
+            var rt = (RectTransform)parts.Button.transform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            return parts;
+        }
+
         internal static void StretchRight(RectTransform rt, float width, float rightOffset)
         {
             rt.anchorMin = new Vector2(1f, 0f);

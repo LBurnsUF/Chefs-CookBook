@@ -39,8 +39,23 @@ namespace CookBook
             // Clear any leftovers if you re-enter the UI 
             for (int i = cookbookRoot.childCount - 1; i >= 0; i--) UnityEngine.Object.Destroy(cookbookRoot.GetChild(i).gameObject);
 
+            var panelGO = InstantiateBundleTemplate("Panel") ?? BuildPanelSkeleton(cookbookRoot);
+            panelGO.SetActive(true);
+            BindPanelSkeleton(panelGO.GetComponent<PanelView>());
+        }
+
+        private static GameObject BuildPanelSkeleton(RectTransform cookbookRoot)
+        {
+            var panelGO = CreateUIObject("Panel", typeof(RectTransform), typeof(PanelView));
+            var panelRT = panelGO.GetComponent<RectTransform>();
+            panelRT.SetParent(cookbookRoot, false);
+            panelRT.anchorMin = Vector2.zero;
+            panelRT.anchorMax = Vector2.one;
+            panelRT.offsetMin = Vector2.zero;
+            panelRT.offsetMax = Vector2.zero;
+
             //------------------------ Border ------------------------
-            AddBorderTapered((RectTransform)_cookbookRoot.transform, new Color32(209, 209, 210, 255), 2f, 2f);
+            AddBorderTapered(panelRT, new Color32(209, 209, 210, 255), 2f, 2f);
 
             // ----------------------------- Dimensions ------------------------------
             float padTopPx = RoundToEven(CookBookPanelPaddingTopNorm * _panelHeight);
@@ -64,7 +79,7 @@ namespace CookBook
             GameObject searchGO = CreateUIObject("SearchBarContainer", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
 
             var searchRect = searchGO.GetComponent<RectTransform>();
-            searchRect.SetParent(cookbookRoot, false);
+            searchRect.SetParent(panelRT, false);
             // render above reticle
             var searchCanvas = searchGO.GetComponent<Canvas>();
             searchCanvas.overrideSorting = true;
@@ -99,7 +114,7 @@ namespace CookBook
             bgImage.color = new Color(0f, 0f, 0f, 0.4f);
             bgImage.raycastTarget = false;
 
-            _searchInputField = inputGO.GetComponent<TMP_InputField>();
+            var searchField = inputGO.GetComponent<TMP_InputField>();
 
             GameObject textAreaGO = CreateUIObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
             var textAreaRT = textAreaGO.GetComponent<RectTransform>();
@@ -138,40 +153,18 @@ namespace CookBook
             placeholderTMP.color = new Color(1f, 1f, 1f, 0.5f);
             placeholderTMP.raycastTarget = false;
 
-            _searchInputField.textViewport = textAreaRT;
-            _searchInputField.textComponent = textTMP;
-            _searchInputField.placeholder = placeholderTMP;
-            _searchInputField.onValueChanged.AddListener(_ => RefreshUIVisibility());
+            searchField.textViewport = textAreaRT;
+            searchField.textComponent = textTMP;
+            searchField.placeholder = placeholderTMP;
 
-            var cycle = CreateCanonButton("CategoryCycleButton", searchRect, "ALL");
-            var cycleRT = (RectTransform)cycle.Button.transform;
+            // category button is cloned into this at bind
+            var cycleRT = CreateUIObject("CategorySlot", typeof(RectTransform)).GetComponent<RectTransform>();
+            cycleRT.SetParent(searchRect, false);
             cycleRT.anchorMin = new Vector2(0.8f, 0f);
             cycleRT.anchorMax = new Vector2(1f, 1f);
             cycleRT.pivot = new Vector2(0.5f, 0.5f);
             cycleRT.offsetMin = new Vector2(0f, searchBottomPx);
             cycleRT.offsetMax = new Vector2(0f, searchTopPx);
-
-            var labelTMP = cycle.Label;
-            if (labelTMP)
-            {
-                labelTMP.richText = true;
-                labelTMP.raycastTarget = false;
-                // center on drawn glyphs since the icon stretches the line
-                labelTMP.alignment = TextAlignmentOptions.Midline;
-            }
-
-            _categoryButton = cycle.Button;
-            // category colors own this label
-            var cycleSkin = cycle.Button.GetComponent<RoR2.UI.SkinControllers.ButtonSkinController>();
-            if (cycleSkin) cycleSkin.useRecommendedLabel = false;
-            UpdateCycleButtonVisuals(labelTMP);
-
-            cycle.Button.onClick.AddListener(() =>
-            {
-                RecipeFilter.CycleCategory();
-                UpdateCycleButtonVisuals(labelTMP);
-                RefreshUIVisibility();
-            });
 
             AddBorderTapered(searchRect, new Color32(209, 209, 210, 200), bottom: borderThickness);
 
@@ -179,7 +172,7 @@ namespace CookBook
             GameObject footerGO = CreateUIObject("Footer", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
             var footerRT = footerGO.GetComponent<RectTransform>();
 
-            footerRT.SetParent(cookbookRoot, false);
+            footerRT.SetParent(panelRT, false);
             // render above reticle
             var footerCanvas = footerGO.GetComponent<Canvas>();
             footerCanvas.overrideSorting = true;
@@ -199,54 +192,37 @@ namespace CookBook
             float fieldW = RoundToEven(footerHeightPx * 1.6f);
             float gapPx = buttonInsetPx;
 
-            var plus = CreateCanonButton("RepeatPlus", footerRT, "+");
-            StretchRight((RectTransform)plus.Button.transform, stepW, 0f);
-            plus.Button.onClick.AddListener(() => StepRepeatCount(1));
-            _repeatPlusButton = plus.Button;
+            // stepper and craft buttons are cloned into these at bind
+            var plusRT = CreateUIObject("PlusSlot", typeof(RectTransform)).GetComponent<RectTransform>();
+            plusRT.SetParent(footerRT, false);
+            StretchRight(plusRT, stepW, 0f);
 
             GameObject repeatGO = CreateUIObject("RepeatInput", typeof(RectTransform), typeof(Image), typeof(TMP_InputField));
             var repeatRT = repeatGO.GetComponent<RectTransform>();
             repeatRT.SetParent(footerRT, false);
             StretchRight(repeatRT, fieldW, stepW + gapPx);
 
-            var minus = CreateCanonButton("RepeatMinus", footerRT, "-");
-            StretchRight((RectTransform)minus.Button.transform, stepW, stepW + gapPx + fieldW + gapPx);
-            minus.Button.onClick.AddListener(() => StepRepeatCount(-1));
-            _repeatMinusButton = minus.Button;
+            var minusRT = CreateUIObject("MinusSlot", typeof(RectTransform)).GetComponent<RectTransform>();
+            minusRT.SetParent(footerRT, false);
+            StretchRight(minusRT, stepW, stepW + gapPx + fieldW + gapPx);
 
-            var craft = CreateCanonButton("GlobalCraftButton", footerRT, "Select a Recipe");
-            var craftBtnRT = (RectTransform)craft.Button.transform;
+            var craftBtnRT = CreateUIObject("CraftSlot", typeof(RectTransform)).GetComponent<RectTransform>();
+            craftBtnRT.SetParent(footerRT, false);
             craftBtnRT.anchorMin = Vector2.zero;
             craftBtnRT.anchorMax = Vector2.one;
             craftBtnRT.pivot = new Vector2(0.5f, 0.5f);
             craftBtnRT.offsetMin = Vector2.zero;
             craftBtnRT.offsetMax = new Vector2(-(stepW * 2f + fieldW + gapPx * 3f), 0f);
-            craft.Button.interactable = false;
-            // center on drawn glyphs so descenders clear the frame
-            var craftSkin = craft.Button.GetComponent<RoR2.UI.SkinControllers.ButtonSkinController>();
-            if (craftSkin) craftSkin.useRecommendedAlignment = false;
-            if (craft.Label) craft.Label.alignment = TextAlignmentOptions.Midline;
-
-            // lighter disabled tint so the frame reads like the stepper
-            var craftColors = craft.Button.colors;
-            craftColors.disabledColor = Color.Lerp(craftColors.disabledColor, craftColors.normalColor, 0.5f);
-            craft.Button.colors = craftColors;
-
-            _globalCraftButton = craft.Button;
-            _globalCraftButtonText = craft.Label;
-            _globalCraftButtonImage = craft.Image;
-            _globalCraftButtonIsCanon = craft.IsCanon;
-            _globalCraftButton.onClick.AddListener(OnGlobalCraftButtonClicked);
 
             // --- Repeat Craft Box ---
             var repeatImg = repeatGO.GetComponent<Image>();
             // match search field
             repeatImg.color = new Color(0f, 0f, 0f, 0.4f);
             repeatImg.raycastTarget = true;
-            _repeatInputField = repeatGO.GetComponent<TMP_InputField>();
+            var repeatField = repeatGO.GetComponent<TMP_InputField>();
             // mouse only, stepper handles gamepad
-            _repeatInputField.navigation = new Navigation { mode = Navigation.Mode.None };
-            _repeatInputField.characterValidation = TMP_InputField.CharacterValidation.Digit;
+            repeatField.navigation = new Navigation { mode = Navigation.Mode.None };
+            repeatField.characterValidation = TMP_InputField.CharacterValidation.Digit;
 
             var RepeatTextAreaRT = CreateInternal("Text Area", repeatRT, typeof(RectMask2D));
 
@@ -263,12 +239,10 @@ namespace CookBook
             repeatTMP.color = Color.white;
 
             // Wiring
-            _repeatInputField.textViewport = RepeatTextAreaRT;
-            _repeatInputField.placeholder = repeatPhTMP;
-            _repeatInputField.textComponent = repeatTMP;
-
-            _repeatInputField.text = string.Empty;
-            _repeatInputField.onEndEdit.AddListener(OnRepeatInputEndEdit);
+            repeatField.textViewport = RepeatTextAreaRT;
+            repeatField.placeholder = repeatPhTMP;
+            repeatField.textComponent = repeatTMP;
+            repeatField.text = string.Empty;
 
             //------------------------ RecipeListContainer ------------------------
             GameObject listGO = CreateUIObject("RecipeListContainer", typeof(RectTransform), typeof(ScrollRect));
@@ -276,7 +250,7 @@ namespace CookBook
             var listRect = listGO.GetComponent<RectTransform>();
             var scroll = listGO.GetComponent<ScrollRect>();
 
-            listRect.SetParent(cookbookRoot, false);
+            listRect.SetParent(panelRT, false);
             listRect.anchorMin = new Vector2(0f, 1f);
             listRect.anchorMax = Vector2.one;
             listRect.pivot = new Vector2(0.5f, 1f);
@@ -321,7 +295,6 @@ namespace CookBook
             contentRT.sizeDelta = Vector2.zero;
 
             scroll.content = contentRT;
-            _recipeListContent = contentRT;
 
             // rows stacked from top
             var vLayout = contentGO.GetComponent<VerticalLayoutGroup>();
@@ -340,6 +313,81 @@ namespace CookBook
             var fitter = contentGO.GetComponent<ContentSizeFitter>();
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+            var view = panelGO.GetComponent<PanelView>();
+            view.SearchInput = searchField;
+            view.CategorySlot = cycleRT;
+            view.ListContent = contentRT;
+            view.CraftSlot = craftBtnRT;
+            view.MinusSlot = minusRT;
+            view.RepeatInput = repeatField;
+            view.PlusSlot = plusRT;
+            return panelGO;
+        }
+
+        // vanilla button clones and listeners can't live in the prefab
+        private static void BindPanelSkeleton(PanelView view)
+        {
+            _recipeListContent = view.ListContent;
+
+            _searchInputField = view.SearchInput;
+            _searchInputField.onValueChanged.AddListener(_ => RefreshUIVisibility());
+
+            _repeatInputField = view.RepeatInput;
+            _repeatInputField.onEndEdit.AddListener(OnRepeatInputEndEdit);
+
+            // ------------------------ Category ------------------------
+            var cycle = CreateSlotButton("CategoryCycleButton", view.CategorySlot, "ALL");
+
+            var labelTMP = cycle.Label;
+            if (labelTMP)
+            {
+                labelTMP.richText = true;
+                labelTMP.raycastTarget = false;
+                // center on drawn glyphs since the icon stretches the line
+                labelTMP.alignment = TextAlignmentOptions.Midline;
+            }
+
+            _categoryButton = cycle.Button;
+            // category colors own this label
+            var cycleSkin = cycle.Button.GetComponent<RoR2.UI.SkinControllers.ButtonSkinController>();
+            if (cycleSkin) cycleSkin.useRecommendedLabel = false;
+            UpdateCycleButtonVisuals(labelTMP);
+
+            cycle.Button.onClick.AddListener(() =>
+            {
+                RecipeFilter.CycleCategory();
+                UpdateCycleButtonVisuals(labelTMP);
+                RefreshUIVisibility();
+            });
+
+            // ------------------------ Stepper ------------------------
+            var plus = CreateSlotButton("RepeatPlus", view.PlusSlot, "+");
+            plus.Button.onClick.AddListener(() => StepRepeatCount(1));
+            _repeatPlusButton = plus.Button;
+
+            var minus = CreateSlotButton("RepeatMinus", view.MinusSlot, "-");
+            minus.Button.onClick.AddListener(() => StepRepeatCount(-1));
+            _repeatMinusButton = minus.Button;
+
+            // ------------------------ Craft ------------------------
+            var craft = CreateSlotButton("GlobalCraftButton", view.CraftSlot, "Select a Recipe");
+            craft.Button.interactable = false;
+            // center on drawn glyphs so descenders clear the frame
+            var craftSkin = craft.Button.GetComponent<RoR2.UI.SkinControllers.ButtonSkinController>();
+            if (craftSkin) craftSkin.useRecommendedAlignment = false;
+            if (craft.Label) craft.Label.alignment = TextAlignmentOptions.Midline;
+
+            // lighter disabled tint so the frame reads like the stepper
+            var craftColors = craft.Button.colors;
+            craftColors.disabledColor = Color.Lerp(craftColors.disabledColor, craftColors.normalColor, 0.5f);
+            craft.Button.colors = craftColors;
+
+            _globalCraftButton = craft.Button;
+            _globalCraftButtonText = craft.Label;
+            _globalCraftButtonImage = craft.Image;
+            _globalCraftButtonIsCanon = craft.IsCanon;
+            _globalCraftButton.onClick.AddListener(OnGlobalCraftButtonClicked);
         }
 
         //==================== Prefabs ====================
@@ -1044,6 +1092,8 @@ namespace CookBook
             errors.AddRange(ViewValidator.Validate(_droneSlotTemplate, typeof(SlotView)));
             errors.AddRange(ViewValidator.Validate(_tradeSlotTemplate, typeof(SlotView)));
             errors.AddRange(ViewValidator.Validate(_selectionReticle ? _selectionReticle.gameObject : null, typeof(ReticleView)));
+            var panel = _cookbookRoot.GetComponentInChildren<PanelView>(true);
+            errors.AddRange(ViewValidator.Validate(panel ? panel.gameObject : null, typeof(PanelView)));
 
             if (errors.Count == 0) _log.LogInfo("CraftUI: code templates validate.");
             else _log.LogWarning("CraftUI: code template refs unset\n  " + string.Join("\n  ", errors));
