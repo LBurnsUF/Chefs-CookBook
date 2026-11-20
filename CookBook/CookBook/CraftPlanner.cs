@@ -2691,7 +2691,7 @@ namespace CookBook
 
         internal void RefreshVisualOverridesAndEmit(InventorySnapshot snap)
         {
-            if (_entryCache == null || _entryCache.Count == 0) return;
+            if (_entryCache == null) return;
 
             var finalResults = _entryCache.Values.ToList();
 
