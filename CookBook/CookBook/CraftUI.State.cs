@@ -7,72 +7,74 @@ using static CookBook.CraftPlanner;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
-        internal static IReadOnlyList<CraftableEntry> LastCraftables { get; private set; }
-        internal static bool _skeletonBuilt = false;
-        internal static CraftingController _currentController;
-        internal static InventorySnapshot _snap;
-        internal static bool _hasSnap;
+        internal static readonly CraftUI Crafting = new();
 
-        internal static GameObject _cookbookRoot;
-        internal static GameObject _panelHolder;
-        internal static RoR2.UI.MPEventSystemProvider _eventSystemProvider;
-        internal static Vector2 _builtSize;
-        internal static ReticleClip _reticleClip;
-        internal static RectTransform _recipeListContent;
-        internal static TMP_InputField _searchInputField;
+        internal IReadOnlyList<CraftableEntry> LastCraftables { get; private set; }
+        internal bool _skeletonBuilt = false;
+        internal CraftingController _currentController;
+        internal InventorySnapshot _snap;
+        internal bool _hasSnap;
 
-        internal static GameObject _recipeRowTemplate;
-        internal static GameObject _pathRowTemplate;
-        internal static GameObject _ingredientSlotTemplate;
-        internal static GameObject _droneSlotTemplate;
-        internal static GameObject _tradeSlotTemplate;
-        internal static GameObject _ResultSlotTemplate;
+        internal GameObject _cookbookRoot;
+        internal GameObject _panelHolder;
+        internal RoR2.UI.MPEventSystemProvider _eventSystemProvider;
+        internal Vector2 _builtSize;
+        internal ReticleClip _reticleClip;
+        internal RectTransform _recipeListContent;
+        internal TMP_InputField _searchInputField;
 
-        internal static Coroutine _activeBuildRoutine;
-        internal static Coroutine _activeDropdownRoutine;
+        internal GameObject _recipeRowTemplate;
+        internal GameObject _pathRowTemplate;
+        internal GameObject _ingredientSlotTemplate;
+        internal GameObject _droneSlotTemplate;
+        internal GameObject _tradeSlotTemplate;
+        internal GameObject _ResultSlotTemplate;
 
-        internal static RectTransform _selectionReticle;
-        internal static RectTransform _currentReticleTarget;
-        internal static RectTransform _selectedAnchor;
+        internal Coroutine _activeBuildRoutine;
+        internal Coroutine _activeDropdownRoutine;
 
-        internal static RoR2.UI.HGButton _globalCraftButton;
-        internal static TextMeshProUGUI _globalCraftButtonText;
-        internal static Image _globalCraftButtonImage;
-        internal static bool _globalCraftButtonIsCanon;
+        internal RectTransform _selectionReticle;
+        internal RectTransform _currentReticleTarget;
+        internal RectTransform _selectedAnchor;
 
-        internal static RecipeChain _selectedChainData;
-        internal static TMP_InputField _repeatInputField;
-        internal static RoR2.UI.HGButton _repeatMinusButton;
-        internal static RoR2.UI.HGButton _repeatPlusButton;
-        internal static RoR2.UI.HGButton _categoryButton;
+        internal RoR2.UI.HGButton _globalCraftButton;
+        internal TextMeshProUGUI _globalCraftButtonText;
+        internal Image _globalCraftButtonImage;
+        internal bool _globalCraftButtonIsCanon;
 
-        internal static RoR2.UI.CraftingPanel _craftingPanel;
-        internal static RoR2.UI.HGButton _vanillaButtonTemplate;
-        internal static RoR2.UI.UILayerKey _vanillaTopLayer;
+        internal RecipeChain _selectedChainData;
+        internal TMP_InputField _repeatInputField;
+        internal RoR2.UI.HGButton _repeatMinusButton;
+        internal RoR2.UI.HGButton _repeatPlusButton;
+        internal RoR2.UI.HGButton _categoryButton;
+
+        internal RoR2.UI.CraftingPanel _craftingPanel;
+        internal RoR2.UI.HGButton _vanillaButtonTemplate;
+        internal RoR2.UI.UILayerKey _vanillaTopLayer;
 
         internal static Sprite _solidPointSprite;
 
-        internal static readonly List<RecipeRowUI> _recipeRowUIs = new();
+        internal readonly List<RecipeRowUI> _recipeRowUIs = new();
 
-        internal static System.Reflection.MethodInfo _onIngredientsChangedMethod;
+        internal System.Reflection.MethodInfo _onIngredientsChangedMethod;
 
-        internal static RecipeRowRuntime _openRow;
-        internal static CraftUIRunner _runner;
+        internal RecipeRowRuntime _openRow;
+        internal CraftUIRunner _runner;
 
-        internal static RecipeDropdownRuntime _sharedDropdown;
-        internal static RecipeRowRuntime _cachedDropdownOwner;
-        internal static RecipeRowRuntime _emptyRow;
+        internal RecipeDropdownRuntime _sharedDropdown;
+        internal RecipeRowRuntime _cachedDropdownOwner;
+        internal RecipeRowRuntime _emptyRow;
 
         // dropdown slots wait in SlotPool between path rows, one stack per template
-        internal static readonly Dictionary<GameObject, Stack<SlotView>> _slotPools = new();
-        internal static Transform _slotPoolRoot;
+        internal readonly Dictionary<GameObject, Stack<SlotView>> _slotPools = new();
+        internal Transform _slotPoolRoot;
 
-        internal static PathRowRuntime _currentHoveredPath;
-        internal static PathRowRuntime _selectedPathUI;
+        internal PathRowRuntime _currentHoveredPath;
+        internal PathRowRuntime _selectedPathUI;
 
-        internal static void NotifyRecipeRowDestroyed(RecipeRowRuntime row)
+        internal void NotifyRecipeRowDestroyed(RecipeRowRuntime row)
         {
             if (_openRow == row) _openRow = null;
             if (_cachedDropdownOwner == row) _cachedDropdownOwner = null;
@@ -80,7 +82,7 @@ namespace CookBook
                 _sharedDropdown.CurrentOwner = null;
         }
 
-        internal static void NotifyPathRowDestroyed(PathRowRuntime row)
+        internal void NotifyPathRowDestroyed(PathRowRuntime row)
         {
             if (_currentHoveredPath == row) _currentHoveredPath = null;
             if (_selectedPathUI == row) _selectedPathUI = null;

@@ -4,7 +4,7 @@ using static CookBook.CraftPlanner;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
         internal static ManualLogSource _log;
 

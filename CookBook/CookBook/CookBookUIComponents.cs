@@ -7,6 +7,7 @@ namespace CookBook
     //==================== Runtimes ====================
     internal sealed class RecipeRowRuntime : MonoBehaviour
     {
+        internal CraftUI Panel;
         internal CraftableEntry Entry;
         public RecipeRowView View;
 
@@ -21,12 +22,13 @@ namespace CookBook
                 View.RowTopButton.HighlightChanged = null;
             }
             Entry = null;
-            CraftUI.NotifyRecipeRowDestroyed(this);
+            Panel?.NotifyRecipeRowDestroyed(this);
         }
     }
 
     internal sealed class PathRowRuntime : MonoBehaviour
     {
+        internal CraftUI Panel;
         internal RecipeRowRuntime OwnerRow;
         internal RecipeChain Chain;
         public PathRowView View;
@@ -70,26 +72,26 @@ namespace CookBook
                 View.PathButton.HighlightChanged = null;
             }
 
-            CraftUI.NotifyPathRowDestroyed(this);
+            Panel?.NotifyPathRowDestroyed(this);
             OwnerRow = null;
             Chain = null;
         }
 
-        internal void OnClicked() { CraftUI.OnPathSelected(this); }
+        internal void OnClicked() { Panel.OnPathSelected(this); }
 
         internal void OnHighlightChanged(bool isHighlighted)
         {
             if (isHighlighted)
             {
                 isHovered = true;
-                CraftUI._currentHoveredPath = this;
-                CraftUI.AttachReticleTo(View.VisualRect);
+                Panel._currentHoveredPath = this;
+                Panel.AttachReticleTo(View.VisualRect);
             }
             else
             {
                 isHovered = false;
-                if (CraftUI.IsReticleAttachedTo(View.VisualRect))
-                    CraftUI.RestoreReticleToSelection();
+                if (Panel.IsReticleAttachedTo(View.VisualRect))
+                    Panel.RestoreReticleToSelection();
             }
             UpdateVisuals(false);
         }
@@ -98,7 +100,7 @@ namespace CookBook
             if (isSelected == selected) return;
             isSelected = selected;
 
-            if (isSelected) CraftUI.AttachReticleTo(View.VisualRect);
+            if (isSelected) Panel.AttachReticleTo(View.VisualRect);
             UpdateVisuals(false);
         }
 
@@ -120,6 +122,7 @@ namespace CookBook
 
     internal class RecipeDropdownRuntime : MonoBehaviour
     {
+        internal CraftUI Panel;
         public DropdownView View;
         public RecipeRowRuntime CurrentOwner;
 
@@ -144,21 +147,21 @@ namespace CookBook
                 View.ScrollRect.verticalNormalizedPosition = 1f;
             }
 
-            CraftUI.PopulateDropdown(View.Content, owner);
+            Panel.PopulateDropdown(View.Content, owner);
         }
 
         public void Close()
         {
-            if (CraftUI._activeDropdownRoutine != null && CraftUI._runner != null)
+            if (Panel._activeDropdownRoutine != null && Panel._runner != null)
             {
-                CraftUI._runner.StopCoroutine(CraftUI._activeDropdownRoutine);
-                CraftUI._activeDropdownRoutine = null;
+                Panel._runner.StopCoroutine(Panel._activeDropdownRoutine);
+                Panel._activeDropdownRoutine = null;
             }
 
             if (CurrentOwner == null) return;
 
             SelectedPathIndex = -1;
-            transform.SetParent(CraftUI._cookbookRoot.transform, false);
+            transform.SetParent(Panel._cookbookRoot.transform, false);
             gameObject.SetActive(false);
             CurrentOwner = null;
         }

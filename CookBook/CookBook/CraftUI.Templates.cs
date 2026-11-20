@@ -5,9 +5,9 @@ using UnityEngine.UI;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
-        internal static void AcquireTemplates(CraftingPanel craftingPanel, RectTransform cbRT)
+        internal void AcquireTemplates(CraftingPanel craftingPanel, RectTransform cbRT)
         {
             _craftingPanel = craftingPanel;
             _vanillaTopLayer = craftingPanel.confirmButton ? craftingPanel.confirmButton.requiredTopLayer : null;
@@ -27,7 +27,7 @@ namespace CookBook
             _skeletonBuilt = true;
         }
 
-        internal static void CookBookSkeleton(RectTransform cookbookRoot)
+        internal void CookBookSkeleton(RectTransform cookbookRoot)
         {
             if (!cookbookRoot) return;
 
@@ -40,7 +40,7 @@ namespace CookBook
         }
 
         // vanilla button clones and listeners can't live in the prefab
-        private static void BindPanelSkeleton(PanelView view)
+        private void BindPanelSkeleton(PanelView view)
         {
             _recipeListContent = view.ListContent;
 
@@ -105,7 +105,7 @@ namespace CookBook
         }
 
         //==================== Prefabs ====================
-        internal static void EnsureRecipeRowTemplate()
+        internal void EnsureRecipeRowTemplate()
         {
             if (_recipeRowTemplate != null) return;
 
@@ -116,7 +116,7 @@ namespace CookBook
         }
 
         // runtime state and the vanilla layer can't live in the prefab
-        private static void BindRecipeRowTemplate(GameObject rowGO)
+        private void BindRecipeRowTemplate(GameObject rowGO)
         {
             var view = rowGO.GetComponent<RecipeRowView>();
             view.RowTopButton.requiredTopLayer = _vanillaTopLayer;
@@ -126,7 +126,7 @@ namespace CookBook
             runtime.CollapsedHeight = view.RowTransform.sizeDelta.y;
         }
 
-        internal static void EnsurePathRowTemplate()
+        internal void EnsurePathRowTemplate()
         {
             if (_pathRowTemplate != null) return;
             _pathRowTemplate = InstantiateBundleTemplate("PathRow");
@@ -134,30 +134,31 @@ namespace CookBook
         }
 
         // runtime state and the vanilla layer can't live in the prefab
-        private static void BindPathRowTemplate(GameObject rowGO)
+        private void BindPathRowTemplate(GameObject rowGO)
         {
             var view = rowGO.GetComponent<PathRowView>();
             view.PathButton.requiredTopLayer = _vanillaTopLayer;
             rowGO.AddComponent<PathRowRuntime>().View = view;
         }
 
-        internal static void EnsureSharedDropdown()
+        internal void EnsureSharedDropdown()
         {
             if (_sharedDropdown != null) return;
             BindSharedDropdown(InstantiateBundleTemplate("Dropdown"));
         }
 
         // runtime and the list scroll it hands off to live outside the prefab
-        private static void BindSharedDropdown(GameObject drawerGO)
+        private void BindSharedDropdown(GameObject drawerGO)
         {
             var view = drawerGO.GetComponent<DropdownView>();
             view.ScrollRect.ParentScroll = _recipeListContent.GetComponentInParent<ScrollRect>();
 
             _sharedDropdown = drawerGO.AddComponent<RecipeDropdownRuntime>();
+            _sharedDropdown.Panel = this;
             _sharedDropdown.View = view;
         }
 
-        internal static void EnsureSharedHoverRect()
+        internal void EnsureSharedHoverRect()
         {
             if (_selectionReticle != null) return;
 
@@ -166,7 +167,7 @@ namespace CookBook
             _reticleClip = reticleGO.GetComponent<ReticleView>().Clip;
         }
 
-        internal static void EnsureResultSlotArtTemplates(CraftingPanel craftingPanel)
+        internal void EnsureResultSlotArtTemplates(CraftingPanel craftingPanel)
         {
             if (_ResultSlotTemplate != null) return;
             _ResultSlotTemplate = InstantiateBundleTemplate("ResultSlot");
@@ -191,7 +192,7 @@ namespace CookBook
             outer.transform.SetSiblingIndex(2);
         }
 
-        internal static void EnsureIngredientSlotTemplate()
+        internal void EnsureIngredientSlotTemplate()
         {
             if (_ingredientSlotTemplate != null) return;
             _ingredientSlotTemplate = InstantiateBundleTemplate("PhysicalSlot");
@@ -200,7 +201,7 @@ namespace CookBook
         }
 
         // inactive holder for pooled dropdown slots
-        internal static void EnsureSlotPool()
+        internal void EnsureSlotPool()
         {
             if (_slotPoolRoot != null) return;
 
@@ -212,7 +213,7 @@ namespace CookBook
 
         //==================== Bundle ====================
         // bundle prefab as an inactive template
-        private static GameObject InstantiateBundleTemplate(string name)
+        private GameObject InstantiateBundleTemplate(string name)
         {
             var go = UnityEngine.Object.Instantiate(UIBundle.GetPrefab(name), _cookbookRoot.transform, false);
             go.name = name;

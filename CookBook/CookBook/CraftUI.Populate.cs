@@ -6,12 +6,12 @@ using static CookBook.CraftPlanner;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
         // per frame build time so opening stays smooth
         private const double BuildBudgetMs = 4.0;
 
-        internal static void PopulateRecipeList(IReadOnlyList<CraftableEntry> craftables)
+        internal void PopulateRecipeList(IReadOnlyList<CraftableEntry> craftables)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             if (!_skeletonBuilt || _recipeListContent == null || _runner == null) return;
@@ -19,7 +19,7 @@ namespace CookBook
             if (_cookbookRoot.activeInHierarchy) _activeBuildRoutine = _runner.StartCoroutine(PopulateRoutine(craftables, sw));
         }
 
-        internal static IEnumerator PopulateRoutine(IReadOnlyList<CraftableEntry> craftables, System.Diagnostics.Stopwatch sw)
+        internal IEnumerator PopulateRoutine(IReadOnlyList<CraftableEntry> craftables, System.Diagnostics.Stopwatch sw)
         {
             var scrollRect = _recipeListContent.GetComponentInParent<ScrollRect>();
 
@@ -176,7 +176,7 @@ namespace CookBook
             _log.LogInfo($"CraftUI: PopulateRecipeList completed in {sw.ElapsedMilliseconds}ms, {used} rows");
         }
 
-        internal static void PopulateDropdown(RectTransform contentRoot, RecipeRowRuntime owner)
+        internal void PopulateDropdown(RectTransform contentRoot, RecipeRowRuntime owner)
         {
             if (_runner == null || !_cookbookRoot.activeInHierarchy) return;
 
@@ -190,7 +190,7 @@ namespace CookBook
             _activeDropdownRoutine = _runner.StartCoroutine(PopulateDropdownRoutine(contentRoot, owner));
         }
 
-        internal static IEnumerator PopulateDropdownRoutine(RectTransform contentRoot, RecipeRowRuntime owner)
+        internal IEnumerator PopulateDropdownRoutine(RectTransform contentRoot, RecipeRowRuntime owner)
         {
             // hidden first so layout skips them this frame, rebound below, leftovers stay hidden
             for (int i = contentRoot.childCount - 1; i >= 0; i--) contentRoot.GetChild(i).gameObject.SetActive(false);

@@ -188,7 +188,7 @@ namespace CookBook
         {
             _newestCraftables = craftables;
             _newestSnapshot = snap;
-            CraftUI.SetSnapshot(snap);
+            CraftUI.Crafting.SetSnapshot(snap);
             if (IsChefStage()) OnCraftablesForUIChanged?.Invoke(_newestCraftables, snap);
         }
 
@@ -280,7 +280,7 @@ namespace CookBook
             _newestCraftables.Clear();
             _newestCraftables.TrimExcess();
 
-            CraftUI.CloseCraftPanel();
+            CraftUI.Crafting.CloseCraftPanel();
         }
 
         internal static void OnChefUiOpened(CraftingController controller)
@@ -294,8 +294,8 @@ namespace CookBook
 
             if (IsAutoCrafting) return;
 
-            CraftUI.SetSnapshot(_newestSnapshot);
-            CraftUI.Attach(ActiveCraftingController);
+            CraftUI.Crafting.SetSnapshot(_newestSnapshot);
+            CraftUI.Crafting.Attach(ActiveCraftingController);
         }
 
         internal static void OnChefUiClosed(CraftingController controller)
@@ -303,7 +303,7 @@ namespace CookBook
             DebugLog.Trace(_log, "Crafting UI Closed, detaching CraftUI.");
             if (ActiveCraftingController == controller)
             {
-                CraftUI.Detach();
+                CraftUI.Crafting.Detach();
                 ActiveCraftingController = null;
             }
         }

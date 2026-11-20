@@ -8,9 +8,9 @@ using static CookBook.CraftPlanner;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
-        internal static RecipeRowRuntime CreateRecipeRow(RectTransform parent)
+        internal RecipeRowRuntime CreateRecipeRow(RectTransform parent)
         {
             if (_recipeRowTemplate == null) return null;
 
@@ -25,6 +25,7 @@ namespace CookBook
                 _log.LogError("CreateRecipeRow: RecipeRowRuntime component missing on template.");
                 return null;
             }
+            runtime.Panel = this;
 
             var view = runtime.View;
             if (view.RowTopButton != null)
@@ -90,7 +91,7 @@ namespace CookBook
         }
 
         // says why the list is empty, nothing craftable or all filtered out
-        internal static void RefreshEmptyRow()
+        internal void RefreshEmptyRow()
         {
             if (_recipeListContent == null) return;
 
@@ -147,7 +148,7 @@ namespace CookBook
         }
 
         // reticle marks gamepad focus on row headers
-        internal static void OnRowTopHighlightChanged(RecipeRowRuntime runtime, bool lit)
+        internal void OnRowTopHighlightChanged(RecipeRowRuntime runtime, bool lit)
         {
             if (!runtime || !runtime.View.RowTop) return;
             if (lit) AttachReticleTo(runtime.View.RowTop);
@@ -159,7 +160,7 @@ namespace CookBook
         }
 
         // reuses the path row at index, its slots come from the pool
-        internal static void BindPathRow(RectTransform parent, int index, RecipeChain chain, RecipeRowRuntime owner)
+        internal void BindPathRow(RectTransform parent, int index, RecipeChain chain, RecipeRowRuntime owner)
         {
             if (_pathRowTemplate == null) return;
 
@@ -170,6 +171,7 @@ namespace CookBook
                 GameObject pathRowGO = UnityEngine.Object.Instantiate(_pathRowTemplate, parent);
                 pathRowGO.name = "PathRow";
                 runtime = pathRowGO.GetComponent<PathRowRuntime>();
+                runtime.Panel = this;
             }
 
             runtime.gameObject.SetActive(true);
@@ -212,7 +214,7 @@ namespace CookBook
             }
         }
 
-        internal static void AddSlot(PathRowRuntime row, GameObject template, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
+        internal void AddSlot(PathRowRuntime row, GameObject template, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
         {
             if (template == null) return;
             if (!_slotPools.TryGetValue(template, out var pool)) _slotPools[template] = pool = new Stack<SlotView>();
@@ -237,7 +239,7 @@ namespace CookBook
             }
         }
 
-        internal static void ReleaseSlots(PathRowRuntime row)
+        internal void ReleaseSlots(PathRowRuntime row)
         {
             foreach (var (template, slot) in row.Slots)
             {

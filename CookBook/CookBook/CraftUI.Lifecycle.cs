@@ -7,15 +7,15 @@ using UnityEngine.UI;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
-        internal static void Init(ManualLogSource log)
+        internal void Init(ManualLogSource log)
         {
             _log = log;
             StateController.OnCraftablesForUIChanged += CraftablesForUIChanged;
         }
 
-        internal static void Shutdown()
+        internal void Shutdown()
         {
             StateController.OnCraftablesForUIChanged -= CraftablesForUIChanged;
 
@@ -73,7 +73,7 @@ namespace CookBook
         }
 
         //==================== Attach ====================
-        internal static void Attach(CraftingController controller)
+        internal void Attach(CraftingController controller)
         {
             _currentController = controller;
             var craftingPanel = UnityEngine.Object.FindObjectOfType<CraftingPanel>();
@@ -101,7 +101,7 @@ namespace CookBook
         }
 
         // widens the vanilla panel and returns the cookbook strip
-        private static bool LayoutVanillaPanel(CraftingPanel craftingPanel, Transform bgContainerTr, out Vector2 size, out Vector2 position)
+        private bool LayoutVanillaPanel(CraftingPanel craftingPanel, Transform bgContainerTr, out Vector2 size, out Vector2 position)
         {
             size = Vector2.zero;
             position = Vector2.zero;
@@ -215,7 +215,7 @@ namespace CookBook
 
         //==================== Panel ====================
         // built once, kept across opens
-        private static void BuildPanel(CraftingPanel craftingPanel, Transform bgContainerTr, Vector2 size, Vector2 position)
+        private void BuildPanel(CraftingPanel craftingPanel, Transform bgContainerTr, Vector2 size, Vector2 position)
         {
             if (!_panelHolder)
             {
@@ -249,7 +249,7 @@ namespace CookBook
         }
 
         // puts the built panel on a fresh vanilla panel
-        private static void MountPanel(CraftingPanel craftingPanel, Transform bgContainerTr, Vector2 position)
+        private void MountPanel(CraftingPanel craftingPanel, Transform bgContainerTr, Vector2 position)
         {
             _craftingPanel = craftingPanel;
             _vanillaTopLayer = craftingPanel.confirmButton ? craftingPanel.confirmButton.requiredTopLayer : null;
@@ -269,7 +269,7 @@ namespace CookBook
         }
 
         // parks the panel instead of destroying it
-        internal static void Detach()
+        internal void Detach()
         {
             _currentController = null;
 
@@ -290,7 +290,7 @@ namespace CookBook
         }
 
         // next open looks like a new panel
-        private static void ResetPanelState()
+        private void ResetPanelState()
         {
             if (_activeDropdownRoutine != null && _runner != null)
             {
@@ -317,7 +317,7 @@ namespace CookBook
         }
 
         // drops the built panel, next attach builds fresh
-        internal static void DestroyPanel()
+        internal void DestroyPanel()
         {
             if (_runner != null)
             {
@@ -369,7 +369,7 @@ namespace CookBook
         }
 
         // vanilla layer and gamepad bindings belong to each vanilla panel
-        private static void BindTopLayer(UILayerKey layer, bool gamepadActive)
+        private void BindTopLayer(UILayerKey layer, bool gamepadActive)
         {
             foreach (var btn in _cookbookRoot.GetComponentsInChildren<MPButton>(true)) btn.requiredTopLayer = layer;
             foreach (var ev in _cookbookRoot.GetComponentsInChildren<HGGamepadInputEvent>(true))
@@ -379,7 +379,7 @@ namespace CookBook
             }
         }
 
-        internal static void ClearButtonRefs()
+        internal void ClearButtonRefs()
         {
             _repeatMinusButton = null;
             _repeatPlusButton = null;
@@ -391,7 +391,7 @@ namespace CookBook
             _navOrder.Clear();
         }
 
-        internal static void CloseCraftPanel(CraftingController specificController = null)
+        internal void CloseCraftPanel(CraftingController specificController = null)
         {
             var target = specificController ? specificController : _currentController;
             if (!target) return;
@@ -404,13 +404,13 @@ namespace CookBook
                 DestroyPanelForController(target);
         }
 
-        internal static IEnumerator DestroyPanelNextFrame(CraftingController target)
+        internal IEnumerator DestroyPanelNextFrame(CraftingController target)
         {
             yield return null;
             DestroyPanelForController(target);
         }
 
-        internal static void DestroyPanelForController(CraftingController target)
+        internal void DestroyPanelForController(CraftingController target)
         {
             if (!target) return;
 
@@ -437,13 +437,13 @@ namespace CookBook
                 _currentController = null;
         }
 
-        internal static void SetSnapshot(InventorySnapshot snap)
+        internal void SetSnapshot(InventorySnapshot snap)
         {
             _snap = snap;
             _hasSnap = true;
         }
 
-        internal static bool TryGetSnapshot(out InventorySnapshot snap)
+        internal bool TryGetSnapshot(out InventorySnapshot snap)
         {
             snap = _snap;
             return _hasSnap;

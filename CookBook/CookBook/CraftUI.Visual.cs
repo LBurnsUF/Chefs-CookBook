@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
         internal static GameObject CreateUIObject(string name, params System.Type[] components)
         {
@@ -160,7 +160,7 @@ namespace CookBook
         }
 
         // =================== Hover Reticle ========================
-        internal static void AttachReticleTo(RectTransform target)
+        internal void AttachReticleTo(RectTransform target)
         {
             if (!_selectionReticle || !target) return;
 
@@ -178,12 +178,12 @@ namespace CookBook
             _selectionReticle.gameObject.SetActive(true);
             _selectionReticle.SetAsLastSibling();
         }
-        internal static bool IsReticleAttachedTo(Transform t)
+        internal bool IsReticleAttachedTo(Transform t)
         {
             if (t == null || _selectionReticle == null) return false;
             return _selectionReticle.parent == t;
         }
-        internal static void RestoreReticleToSelection()
+        internal void RestoreReticleToSelection()
         {
             if (_selectedAnchor != null) _currentReticleTarget = _selectedAnchor;
             else if (_selectionReticle) _selectionReticle.gameObject.SetActive(false);

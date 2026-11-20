@@ -43,7 +43,7 @@ namespace CookBook
             CompleteCurrentObjective();
 
             if (closeUi && StateController.ActiveCraftingController)
-                CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
+                CraftUI.Crafting.CloseCraftPanel(StateController.ActiveCraftingController);
         }
 
 
@@ -215,7 +215,7 @@ namespace CookBook
                     controller.ConfirmSelection();
 
                     yield return new WaitForEndOfFrame();
-                    CraftUI.CloseCraftPanel(controller);
+                    CraftUI.Crafting.CloseCraftPanel(controller);
 
                     // Wait for the server to release the prompt participant (SyncVar)
                     float releaseBudget = 3.0f;
@@ -240,7 +240,7 @@ namespace CookBook
                 }
 
                 if (StateController.ActiveCraftingController)
-                    CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
+                    CraftUI.Crafting.CloseCraftPanel(StateController.ActiveCraftingController);
             }
 
             DebugLog.Trace(_log, $"[ExecutionHandler] Finished {completedSteps}/{totalSteps} steps.");
@@ -690,7 +690,7 @@ namespace CookBook
                 if (skill)
                 {
                     if (StateController.ActiveCraftingController)
-                        CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
+                        CraftUI.Crafting.CloseCraftPanel(StateController.ActiveCraftingController);
 
                     while (!skill.CanExecute())
                     {
@@ -715,7 +715,7 @@ namespace CookBook
             if (targetSet != currentSet)
             {
                 if (StateController.ActiveCraftingController)
-                    CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
+                    CraftUI.Crafting.CloseCraftPanel(StateController.ActiveCraftingController);
 
                 int clicks = (targetSet - currentSet + totalSets) % totalSets;
                 DebugLog.Trace(_log, $"[Execution] Cycling sets ({clicks} clicks) for {target}.");

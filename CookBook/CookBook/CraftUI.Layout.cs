@@ -1,8 +1,8 @@
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
-        internal static float _panelHeight;
+        internal float _panelHeight;
 
         // RecipeRow/RowTop
         internal const float RowTopHeightNorm = 0.111821086f;

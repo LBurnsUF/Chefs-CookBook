@@ -7,19 +7,19 @@ using UnityEngine.UI;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
         private static readonly List<Selectable> _navOrder = new();
 
         // =================== Gamepad Navigation ========================
-        internal static void InstallGamepadBindings(GameObject root)
+        internal void InstallGamepadBindings(GameObject root)
         {
             if (!root) return;
             AddGamepadAction(root, "UITabRight", FocusCookBook);
             AddGamepadAction(root, "UITabLeft", FocusVanilla);
         }
 
-        private static void AddGamepadAction(GameObject root, string action, UnityAction cb)
+        private void AddGamepadAction(GameObject root, string action, UnityAction cb)
         {
             var ev = root.AddComponent<HGGamepadInputEvent>();
             ev.actionName = action;
@@ -29,14 +29,14 @@ namespace CookBook
             ev.requiredTopLayer = _vanillaTopLayer;
         }
 
-        internal static void FocusCookBook()
+        internal void FocusCookBook()
         {
             Selectable target = _selectedPathUI ? _selectedPathUI.View.PathButton : null;
             if (!target) target = _navOrder.Count > 0 ? _navOrder[0] : _categoryButton;
             SelectForGamepad(target);
         }
 
-        internal static void FocusVanilla()
+        internal void FocusVanilla()
         {
             if (!_craftingPanel) return;
             Selectable target = null;
@@ -60,7 +60,7 @@ namespace CookBook
         }
 
         // explicit vertical order from filter button through rows to footer
-        internal static void RebuildNavigation()
+        internal void RebuildNavigation()
         {
             _navOrder.Clear();
 

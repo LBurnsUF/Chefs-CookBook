@@ -6,9 +6,9 @@ using UnityEngine.UI;
 using static CookBook.CraftPlanner;
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
-        internal static void OnRepeatInputEndEdit(string val)
+        internal void OnRepeatInputEndEdit(string val)
         {
             if (_selectedChainData == null)
             {
@@ -30,7 +30,7 @@ namespace CookBook
         }
 
         // read leading digits, ignores max suffix
-        internal static int ParseRepeatCount()
+        internal int ParseRepeatCount()
         {
             string s = _repeatInputField ? _repeatInputField.text : null;
             if (string.IsNullOrEmpty(s)) return 1;
@@ -39,7 +39,7 @@ namespace CookBook
             return i == 0 ? 1 : n;
         }
 
-        internal static void StepRepeatCount(int delta)
+        internal void StepRepeatCount(int delta)
         {
             if (_selectedChainData == null || !_repeatInputField) return;
             if (!TryGetSnapshot(out var snap)) return;
@@ -50,7 +50,7 @@ namespace CookBook
             _repeatInputField.text = next >= max ? $"{max} (max)" : next.ToString();
         }
 
-        internal static void OnPathSelected(PathRowRuntime clickedPath)
+        internal void OnPathSelected(PathRowRuntime clickedPath)
         {
             _currentHoveredPath = clickedPath;
             if (_selectedPathUI == clickedPath)
@@ -89,7 +89,7 @@ namespace CookBook
 
         }
 
-        internal static void OnGlobalCraftButtonClicked()
+        internal void OnGlobalCraftButtonClicked()
         {
             if (StateController.IsAutoCrafting) return;
             if (_selectedChainData == null) return;
@@ -103,7 +103,7 @@ namespace CookBook
             StateController.RequestCraft(_selectedChainData, finalCount);
         }
 
-        internal static void CraftablesForUIChanged(IReadOnlyList<CraftableEntry> craftables, InventorySnapshot snap)
+        internal void CraftablesForUIChanged(IReadOnlyList<CraftableEntry> craftables, InventorySnapshot snap)
         {
             _snap = snap;
             LastCraftables = craftables;
@@ -111,7 +111,7 @@ namespace CookBook
             PopulateRecipeList(LastCraftables);
         }
 
-        internal static void ToggleRecipeRow(RecipeRowRuntime runtime)
+        internal void ToggleRecipeRow(RecipeRowRuntime runtime)
         {
             if (runtime == null) return;
 
@@ -130,7 +130,7 @@ namespace CookBook
             RebuildNavigation();
         }
 
-        internal static void ExpandRow(RecipeRowRuntime runtime)
+        internal void ExpandRow(RecipeRowRuntime runtime)
         {
             if (runtime.Entry == null || runtime.Entry.Chains == null) return;
 
@@ -161,7 +161,7 @@ namespace CookBook
             SetArrowExpanded(view, true);
         }
 
-        internal static void CollapseRow(RecipeRowRuntime runtime)
+        internal void CollapseRow(RecipeRowRuntime runtime)
         {
             var view = runtime.View;
 
@@ -206,7 +206,7 @@ namespace CookBook
         }
 
         // Path Selection Logic
-        internal static void DeselectCurrentPath()
+        internal void DeselectCurrentPath()
         {
             if (_selectedPathUI != null)
             {
@@ -262,7 +262,7 @@ namespace CookBook
             label.ForceMeshUpdate();
         }
 
-        internal static void RefreshUIVisibility()
+        internal void RefreshUIVisibility()
         {
             RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField?.text);
             RefreshEmptyRow();

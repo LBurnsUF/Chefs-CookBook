@@ -7,7 +7,7 @@ using UnityEngine.UI;
 
 namespace CookBook
 {
-    internal static partial class CraftUI
+    internal sealed partial class CraftUI
     {
         // =================== Canon Buttons ========================
         internal struct ButtonParts
@@ -35,7 +35,7 @@ namespace CookBook
             return craftingPanel.confirmButton as HGButton;
         }
 
-        internal static ButtonParts CreateCanonButton(string name, RectTransform parent, string text)
+        internal ButtonParts CreateCanonButton(string name, RectTransform parent, string text)
         {
             if (_vanillaButtonTemplate)
             {
@@ -46,7 +46,7 @@ namespace CookBook
         }
 
         // clone inactive so vanilla components never wake
-        internal static ButtonParts CloneVanillaButton(string name, RectTransform parent, string text)
+        internal ButtonParts CloneVanillaButton(string name, RectTransform parent, string text)
         {
             var staging = CreateUIObject("ButtonStaging", typeof(RectTransform));
             staging.SetActive(false);
@@ -137,7 +137,7 @@ namespace CookBook
             if (removed.Count > 0) DebugLog.Trace(_log, $"CraftUI: stripped from button clone: {string.Join(", ", removed)}");
         }
 
-        internal static ButtonParts CreateFlatButton(string name, RectTransform parent, string text)
+        internal ButtonParts CreateFlatButton(string name, RectTransform parent, string text)
         {
             var go = CreateUIObject(name, typeof(RectTransform));
             go.SetActive(false);
@@ -164,7 +164,7 @@ namespace CookBook
         }
 
         // canon buttons fill a slot the panel leaves for them
-        internal static ButtonParts CreateSlotButton(string name, RectTransform slot, string text)
+        internal ButtonParts CreateSlotButton(string name, RectTransform slot, string text)
         {
             var parts = CreateCanonButton(name, slot, text);
             var rt = (RectTransform)parts.Button.transform;
