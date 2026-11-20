@@ -85,7 +85,7 @@ namespace CookBook
             }
 
             // ---------------- Collapsed state ----------------
-            if (view.ArrowText != null) view.ArrowText.text = ">";
+            SetArrowExpanded(view, false);
             if (view.DropdownLayoutElement != null) view.DropdownLayoutElement.preferredHeight = 0f;
             if (view.RowLayoutElement != null) view.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
         }

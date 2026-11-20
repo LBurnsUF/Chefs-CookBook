@@ -157,7 +157,7 @@ namespace CookBook
             LayoutRebuilder.ForceRebuildLayoutImmediate(view.RowTransform);
             PixelSnap(view.RowTransform);
             PixelSnap(view.RowTop);
-            if (view.ArrowText != null) view.ArrowText.text = "v";
+            SetArrowExpanded(view, true);
         }
 
         internal static void CollapseRow(RecipeRowRuntime runtime)
@@ -187,7 +187,14 @@ namespace CookBook
             LayoutRebuilder.ForceRebuildLayoutImmediate(view.RowTransform);
             PixelSnap(view.RowTransform);
             PixelSnap(view.RowTop);
-            if (view.ArrowText != null) view.ArrowText.text = ">";
+            SetArrowExpanded(view, false);
+        }
+
+        // one glyph rotated, so both states match in size
+        internal static void SetArrowExpanded(RecipeRowView view, bool expanded)
+        {
+            if (view.ArrowText == null) return;
+            view.ArrowText.rectTransform.localRotation = expanded ? Quaternion.Euler(0f, 0f, -90f) : Quaternion.identity;
         }
 
         // Path Selection Logic
