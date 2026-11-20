@@ -91,6 +91,7 @@ namespace CookBook
 
         internal static void OnGlobalCraftButtonClicked()
         {
+            if (StateController.IsAutoCrafting) return;
             if (_selectedChainData == null) return;
             int count = ParseRepeatCount();
 

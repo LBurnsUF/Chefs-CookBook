@@ -155,7 +155,6 @@ namespace CookBook
             }
         }
 
-        // pooled slot when one is free, a new one otherwise
         internal static void AddSlot(PathRowRuntime row, GameObject template, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
         {
             if (template == null) return;
@@ -181,7 +180,6 @@ namespace CookBook
             }
         }
 
-        // slots go back to their template's pool
         internal static void ReleaseSlots(PathRowRuntime row)
         {
             foreach (var (template, slot) in row.Slots)

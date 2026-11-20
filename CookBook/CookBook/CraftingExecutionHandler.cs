@@ -30,7 +30,7 @@ namespace CookBook
             {
                 DumpChain(chain, repeatCount);
             }
-            Abort();
+            Abort(closeUi: false);
             _craftingRoutine = _runner.StartCoroutine(CraftChainRoutine(chain, repeatCount));
         }
 
@@ -47,12 +47,12 @@ namespace CookBook
         }
 
 
-        public static void Abort()
+        public static void Abort(bool closeUi = true)
         {
             if (_runner != null && _craftingRoutine != null)
                 _runner.StopCoroutine(_craftingRoutine);
 
-            Cleanup(closeUi: true);
+            Cleanup(closeUi);
         }
 
         private static IEnumerator CraftChainRoutine(CraftPlanner.RecipeChain chain, int repeatCount)
@@ -203,7 +203,7 @@ namespace CookBook
                     completedSteps++;
 
                     lastQty = step.ResultCount;
-                    lastPickup = GetPickupIndex(step);
+                    lastPickup = IsUsedLater(craftQueue, step.ResultIndex) ? GetPickupIndex(step) : PickupIndex.none;
 
                     var prompt = controller.GetComponent<NetworkUIPromptController>();
                     if (!prompt || prompt.currentParticipantMaster == null)
@@ -241,16 +241,6 @@ namespace CookBook
 
                 if (StateController.ActiveCraftingController)
                     CraftUI.CloseCraftPanel(StateController.ActiveCraftingController);
-            }
-
-            if (lastPickup != PickupIndex.none)
-            {
-                StateController.BatchMode = false;
-
-                var def = PickupCatalog.GetPickupDef(lastPickup);
-                SetObjectiveText($"Collect {Language.GetString(def?.nameToken ?? "Result")}");
-                yield return WaitForPendingPickup(lastPickup, lastQty);
-                CompleteCurrentObjective();
             }
 
             DebugLog.Trace(_log, $"[ExecutionHandler] Finished {completedSteps}/{totalSteps} steps.");
@@ -789,6 +779,17 @@ namespace CookBook
             }
 
             CompleteCurrentObjective();
+        }
+
+        // a queued step still takes this result as an ingredient
+        private static bool IsUsedLater(Queue<ChefRecipe> craftQueue, int unifiedIndex)
+        {
+            foreach (var step in craftQueue)
+            {
+                if (step == null) continue;
+                if (step.IngA == unifiedIndex || (step.HasB && step.IngB == unifiedIndex)) return true;
+            }
+            return false;
         }
 
         private static IEnumerator WaitForPendingPickup(PickupIndex pickupIndex, int expectedGain)
