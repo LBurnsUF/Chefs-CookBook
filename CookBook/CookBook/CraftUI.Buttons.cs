@@ -84,6 +84,12 @@ namespace CookBook
                 label.text = text;
                 label.enableWordWrapping = false;
                 label.overflowMode = TextOverflowModes.Ellipsis;
+
+                // our buttons are shorter than vanilla, shrink text to clear the inner frame
+                label.enableAutoSizing = true;
+                label.fontSizeMax = label.fontSize;
+                label.fontSizeMin = 8f;
+                label.margin = new Vector4(0f, ButtonFrameInsetPx, 0f, ButtonFrameInsetPx);
             }
 
             var rt = (RectTransform)go.transform;

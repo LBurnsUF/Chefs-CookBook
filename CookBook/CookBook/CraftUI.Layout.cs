@@ -54,5 +54,6 @@ namespace CookBook
 
         //----- Confirmation -------
         internal const float FooterHeightNorm = 0.05f;
+        internal const float ButtonFrameInsetPx = 6f; // vanilla button's inner frame line
     }
 }
