@@ -28,6 +28,8 @@ How the UI prefabs get from Unity into the game.
 
 Text shows no font in the editor. That's expected: see the Rules section in each prefab guide.
 
+Every object must be on the `UI` layer (top of the Inspector). The game's UI camera only draws that layer for canvases with override sorting, like the search bar and footer. Objects made from the GameObject menu under a canvas get it automatically. The build and the tests fail on any object that isn't on it.
+
 ## Build, test, deploy
 
 From `CookBook.Unity`:

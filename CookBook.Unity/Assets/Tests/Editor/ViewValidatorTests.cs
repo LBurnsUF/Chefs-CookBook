@@ -60,6 +60,15 @@ namespace CookBook.Tests
             Assert.That(ViewValidator.Validate(root, null), Has.Some.StartsWith("Row/Slot: SlotView.Icon"));
         }
 
+        [Test]
+        public void OffUILayerIsReported()
+        {
+            var root = Make("Bar");
+            root.layer = 0;
+
+            Assert.That(ViewValidator.Validate(root, null), Has.Some.Contains("Bar: not on the UI layer"));
+        }
+
         //------------------------------- Bundle -------------------------------
         [Test]
         public void BundlePrefabsValidate()
@@ -78,6 +87,7 @@ namespace CookBook.Tests
         private GameObject Make(string name)
         {
             var go = new GameObject(name, typeof(RectTransform));
+            go.layer = LayerMask.NameToLayer("UI");
             _made.Add(go);
             return go;
         }
@@ -85,6 +95,7 @@ namespace CookBook.Tests
         private static GameObject MakeChild(GameObject parent, string name)
         {
             var go = new GameObject(name, typeof(RectTransform));
+            go.layer = LayerMask.NameToLayer("UI");
             go.transform.SetParent(parent.transform, false);
             return go;
         }

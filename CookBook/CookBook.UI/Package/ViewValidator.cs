@@ -20,9 +20,13 @@ namespace CookBook
 
             if (rootView != null && !root.GetComponent(rootView)) errors.Add($"{root.name}: no {rootView.Name} on root");
 
+            int uiLayer = LayerMask.NameToLayer("UI");
             foreach (var tr in root.GetComponentsInChildren<Transform>(true))
             {
                 string path = PathOf(tr, root.transform);
+
+                // the UI camera culls override canvases off the UI layer
+                if (tr.gameObject.layer != uiLayer) errors.Add($"{path}: not on the UI layer");
 
                 foreach (var comp in tr.GetComponents<Component>())
                 {

@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 9089823951914559793}
   - component: {fileID: 8049789578623507239}
   - component: {fileID: 890852990862163784}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: StackText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -167,7 +167,7 @@ GameObject:
   - component: {fileID: 454355997203076259}
   - component: {fileID: 6837211257116068092}
   - component: {fileID: 4404387665915110067}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: IconBackground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -243,7 +243,7 @@ GameObject:
   - component: {fileID: 7219633108179852932}
   - component: {fileID: 852429671087272592}
   - component: {fileID: 1416309550386987846}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: ResultSlot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -318,7 +318,7 @@ GameObject:
   - component: {fileID: 4869411328147686390}
   - component: {fileID: 1821842166401397864}
   - component: {fileID: 7105670823032248417}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: Icon
   m_TagString: Untagged
   m_Icon: {fileID: 0}
