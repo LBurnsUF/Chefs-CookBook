@@ -138,7 +138,7 @@ namespace CookBook
 
             // hatched empty slot, this row is never rebound to a recipe
             view.ResultSlot.Icon.type = Image.Type.Tiled;
-            view.ResultSlot.Icon.pixelsPerUnitMultiplier = 2f;
+            view.ResultSlot.Icon.pixelsPerUnitMultiplier = 5f;
             view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.3f);
             view.ResultSlot.IconLoader.SetAssetOrDirectReference(HatchingTileRef, null);
             if (view.ResultSlot.StackText != null) view.ResultSlot.StackText.gameObject.SetActive(false);
