@@ -22,7 +22,7 @@ namespace CookBook
             EnsureRecipeRowTemplate();
             EnsurePathRowTemplate();
             EnsureSharedDropdown();
-            BuildSharedHoverRect();
+            EnsureSharedHoverRect();
 
             _skeletonBuilt = true;
 #if COOKBOOK_PERF
@@ -757,21 +757,28 @@ namespace CookBook
             _sharedDropdown.View = view;
         }
 
-        internal static void BuildSharedHoverRect()
+        internal static void EnsureSharedHoverRect()
         {
             if (_selectionReticle != null) return;
 
-            var reticleGO = CreateUIObject("SelectionReticle", typeof(RectTransform), typeof(Image), typeof(Canvas), typeof(LayoutElement));
-            _selectionReticle = reticleGO.GetComponent<RectTransform>();
+            var reticleGO = InstantiateBundleTemplate("Reticle") ?? BuildSharedHoverRect();
+            _selectionReticle = (RectTransform)reticleGO.transform;
+            _reticleClip = reticleGO.GetComponent<ReticleView>().Clip;
+        }
+
+        private static GameObject BuildSharedHoverRect()
+        {
+            var reticleGO = CreateUIObject("SelectionReticle", typeof(RectTransform), typeof(Image), typeof(Canvas), typeof(LayoutElement), typeof(ReticleView));
+            var reticleRT = reticleGO.GetComponent<RectTransform>();
             var le = reticleGO.GetComponent<LayoutElement>();
             le.ignoreLayout = true;
 
-            _selectionReticle.SetParent(_cookbookRoot.transform, false);
+            reticleRT.SetParent(_cookbookRoot.transform, false);
 
-            _selectionReticle.anchorMin = Vector2.zero;
-            _selectionReticle.anchorMax = Vector2.one;
-            _selectionReticle.pivot = new Vector2(0.5f, 0.5f);
-            _selectionReticle.sizeDelta = Vector2.zero;
+            reticleRT.anchorMin = Vector2.zero;
+            reticleRT.anchorMax = Vector2.one;
+            reticleRT.pivot = new Vector2(0.5f, 0.5f);
+            reticleRT.sizeDelta = Vector2.zero;
 
             var canvas = reticleGO.GetComponent<Canvas>();
             canvas.overrideSorting = true;
@@ -780,15 +787,16 @@ namespace CookBook
             // clip inside our canvas, parent masks don't reach it
             var clipGO = CreateUIObject("Clip", typeof(RectTransform), typeof(RectMask2D), typeof(ReticleClip));
             var clipRT = clipGO.GetComponent<RectTransform>();
-            clipRT.SetParent(_selectionReticle, false);
+            clipRT.SetParent(reticleRT, false);
             clipRT.anchorMin = clipRT.anchorMax = clipRT.pivot = Vector2.zero;
 
             var frameRT = CreateUIObject("Frame", typeof(RectTransform)).GetComponent<RectTransform>();
             frameRT.SetParent(clipRT, false);
             frameRT.anchorMin = frameRT.anchorMax = frameRT.pivot = Vector2.zero;
 
-            _reticleClip = clipGO.GetComponent<ReticleClip>();
-            _reticleClip.Frame = frameRT;
+            var clip = clipGO.GetComponent<ReticleClip>();
+            clip.Frame = frameRT;
+            reticleGO.GetComponent<ReticleView>().Clip = clip;
 
             AddBorder(frameRT, new Color32(255, 255, 255, 255), top: 3f, bottom: 3f, left: 3f, right: 3f);
 
@@ -797,6 +805,7 @@ namespace CookBook
             img.raycastTarget = false;
 
             reticleGO.SetActive(false);
+            return reticleGO;
         }
 
         internal static void EnsureResultSlotArtTemplates(CraftingPanel craftingPanel)
@@ -1034,7 +1043,7 @@ namespace CookBook
             errors.AddRange(ViewValidator.Validate(_ingredientSlotTemplate, typeof(SlotView)));
             errors.AddRange(ViewValidator.Validate(_droneSlotTemplate, typeof(SlotView)));
             errors.AddRange(ViewValidator.Validate(_tradeSlotTemplate, typeof(SlotView)));
-            errors.AddRange(ViewValidator.Validate(_selectionReticle ? _selectionReticle.gameObject : null, null));
+            errors.AddRange(ViewValidator.Validate(_selectionReticle ? _selectionReticle.gameObject : null, typeof(ReticleView)));
 
             if (errors.Count == 0) _log.LogInfo("CraftUI: code templates validate.");
             else _log.LogWarning("CraftUI: code template refs unset\n  " + string.Join("\n  ", errors));

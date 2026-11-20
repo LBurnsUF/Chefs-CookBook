@@ -22,6 +22,7 @@ namespace CookBook
             ("PathRow", typeof(PathRowView)),
             ("Dropdown", typeof(DropdownView)),
             ("RecipeRow", typeof(RecipeRowView)),
+            ("Reticle", typeof(ReticleView)),
         };
     }
 }
