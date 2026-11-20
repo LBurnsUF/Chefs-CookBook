@@ -20,7 +20,7 @@ namespace CookBook
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();
             BuildRecipeRowTemplate();
-            BuildPathRowTemplate();
+            EnsurePathRowTemplate();
             BuildSharedDropdown();
             BuildSharedHoverRect();
 
@@ -570,10 +570,15 @@ namespace CookBook
             _recipeRowTemplate = rowGO;
         }
 
-        internal static void BuildPathRowTemplate()
+        internal static void EnsurePathRowTemplate()
         {
             if (_pathRowTemplate != null) return;
+            _pathRowTemplate = InstantiateBundleTemplate("PathRow") ?? BuildPathRowTemplate();
+            BindPathRowTemplate(_pathRowTemplate);
+        }
 
+        private static GameObject BuildPathRowTemplate()
+        {
             float visualHeightPx = RoundToEven(PathRowHeightNorm * _panelHeight);
             float spacingPx = RoundToEven(PathsContainerSpacingNorm * _panelHeight);
             float slotSpacingPx = RoundToEven(PathRowIngredientSpacingNorm * _panelWidth);
@@ -582,7 +587,7 @@ namespace CookBook
             float totalRowHeightPx = visualHeightPx + spacingPx;
             float paddingY = RoundToEven(spacingPx / 2f);
 
-            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(CookBookButton), typeof(DeselectOnPointerExit), typeof(PathRowView), typeof(PathRowRuntime));
+            var rowGO = CreateUIObject("PathRowTemplate", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(CookBookButton), typeof(DeselectOnPointerExit), typeof(PathRowView));
 
             var rowRT = (RectTransform)rowGO.transform;
             var rowLE = rowGO.GetComponent<LayoutElement>();
@@ -609,7 +614,6 @@ namespace CookBook
 
             pathButton.targetGraphic = rowHitbox;
             pathButton.transition = Selectable.Transition.None;
-            pathButton.requiredTopLayer = _vanillaTopLayer;
 
             var visualGO = CreateUIObject("Visuals", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(ColorFaderRuntime));
 
@@ -640,9 +644,16 @@ namespace CookBook
             view.VisualRect = visualRT;
             view.PathButton = pathButton;
             view.Fader = visualGO.GetComponent<ColorFaderRuntime>();
-            rowGO.GetComponent<PathRowRuntime>().View = view;
 
-            _pathRowTemplate = rowGO;
+            return rowGO;
+        }
+
+        // runtime state and the vanilla layer can't live in the prefab
+        private static void BindPathRowTemplate(GameObject rowGO)
+        {
+            var view = rowGO.GetComponent<PathRowView>();
+            view.PathButton.requiredTopLayer = _vanillaTopLayer;
+            rowGO.AddComponent<PathRowRuntime>().View = view;
         }
 
         internal static void BuildSharedDropdown()

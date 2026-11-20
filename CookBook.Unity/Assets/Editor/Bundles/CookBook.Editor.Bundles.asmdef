@@ -9,6 +9,10 @@
   "includePlatforms": [
     "Editor"
   ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "RoR2.dll"
+  ],
   "autoReferenced": false,
   "defineConstraints": [
     "COOKBOOK_GAME"

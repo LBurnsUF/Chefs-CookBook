@@ -19,6 +19,7 @@ namespace CookBook
             ("PhysicalSlot", typeof(SlotView)),
             ("DroneSlot", typeof(SlotView)),
             ("TradeSlot", typeof(SlotView)),
+            ("PathRow", typeof(PathRowView)),
         };
     }
 }
