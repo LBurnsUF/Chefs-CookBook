@@ -32,7 +32,7 @@ namespace CookBook.Editor
                 paths.Add(path);
             }
 
-            // a bad prefab would only fall back in game, fail here instead
+            // a bad prefab would disable the panel in game, fail here instead
             if (errors.Count > 0)
             {
                 Debug.LogError("[BuildBundles] invalid prefabs\n  " + string.Join("\n  ", errors));

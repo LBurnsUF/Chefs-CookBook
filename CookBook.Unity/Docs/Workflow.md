@@ -49,8 +49,8 @@ Unity must be closed for the batch commands. Opening the project in the editor l
 ## In game
 
 - The log line `UIBundle: 9/9 prefabs loaded` means the bundle is in use.
-- A missing or broken prefab logs why and falls back to its code-built version.
-- No bundle at all means everything is code-built.
+- A missing or broken prefab logs why, and the CookBook panel stays off. The vanilla crafting panel is left as it is.
+- A missing bundle does the same.
 - Debug builds also check the code-built templates and log any empty refs.
 
 ## Guides

@@ -175,14 +175,5 @@ namespace CookBook
             rt.offsetMax = Vector2.zero;
             return parts;
         }
-
-        internal static void StretchRight(RectTransform rt, float width, float rightOffset)
-        {
-            rt.anchorMin = new Vector2(1f, 0f);
-            rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(1f, 0.5f);
-            rt.sizeDelta = new Vector2(width, 0f);
-            rt.anchoredPosition = new Vector2(-rightOffset, 0f);
-        }
     }
 }

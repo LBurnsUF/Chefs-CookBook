@@ -60,5 +60,5 @@ IngredientSlot        RectTransform, LayoutElement (42 x 42), SlotView
 ## Rules
 
 - **Text fonts stay empty.** The game's default font fills in at runtime. A font set here would be packed into the bundle.
-- **Keep every `SlotView` ref wired.** The build and the tests fail on an empty ref. In game, a broken slot falls back to the code-built version and logs why.
+- **Keep every `SlotView` ref wired.** The build and the tests fail on an empty ref. In game, a broken slot logs why and the CookBook panel stays off.
 - **Renaming a prefab** means updating its name in `UIBundleInfo.Prefabs` too.

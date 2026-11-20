@@ -53,7 +53,6 @@ namespace CookBook
         internal static RoR2.UI.UILayerKey _vanillaTopLayer;
 
         internal static Sprite _solidPointSprite;
-        internal static Sprite _taperedGradientSprite;
 
         internal static readonly Dictionary<int, Sprite> _iconCache = new();
         internal static readonly Dictionary<DroneIndex, Sprite> _droneIconCache = new();

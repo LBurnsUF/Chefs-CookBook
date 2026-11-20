@@ -85,6 +85,9 @@ namespace CookBook
             // open fires twice
             if (_cookbookRoot != null && _cookbookRoot.transform.parent == bgContainerTr) return;
 
+            // no bundle, no panel, vanilla stays as is
+            if (!UIBundle.EnsureLoaded()) return;
+
             if (!LayoutVanillaPanel(craftingPanel, bgContainerTr, out Vector2 size, out Vector2 position)) return;
 
             // sizes are baked in, rebuild on resolution change
@@ -237,7 +240,6 @@ namespace CookBook
             // build mounted so canvas scale matches
             MountPanel(craftingPanel, bgContainerTr, position);
 
-            _panelWidth = cbRT.rect.width;
             _panelHeight = cbRT.rect.height;
 
             var sw = System.Diagnostics.Stopwatch.StartNew();

@@ -120,45 +120,6 @@ namespace CookBook
             border.Refit();
             return containerGO;
         }
-        public static GameObject AddBorderTapered(RectTransform parent, Color32 color, float top = 0f, float bottom = 0f)
-        {
-            var containerGO = CreateUIObject("BorderGroup_Tapered", typeof(RectTransform), typeof(LayoutElement));
-            var containerRT = containerGO.GetComponent<RectTransform>();
-            containerGO.GetComponent<LayoutElement>().ignoreLayout = true;
-
-            containerRT.SetParent(parent, false);
-            containerRT.anchorMin = Vector2.zero;
-            containerRT.anchorMax = Vector2.one;
-            containerRT.offsetMin = Vector2.zero;
-            containerRT.offsetMax = Vector2.zero;
-
-            RectTransform MakeTaper(string name)
-            {
-                var go = CreateUIObject(name, typeof(RectTransform), typeof(Image));
-                go.transform.SetParent(containerRT, false);
-                var img = go.GetComponent<Image>();
-                img.sprite = GetTaperedSprite();
-                img.color = color;
-                img.raycastTarget = false;
-                return go.GetComponent<RectTransform>();
-            }
-
-            var t = MakeTaper("Top");
-            t.anchorMin = new Vector2(0, 1); t.anchorMax = new Vector2(1, 1);
-            t.pivot = new Vector2(0.5f, 1);
-            t.anchoredPosition = Vector2.zero;
-            t.sizeDelta = new Vector2(0, top);
-
-            if ((int)bottom > 0)
-            {
-                var b = MakeTaper("Bottom");
-                b.anchorMin = new Vector2(0, 0); b.anchorMax = new Vector2(1, 0);
-                b.pivot = new Vector2(0.5f, 0);
-                b.anchoredPosition = Vector2.zero;
-                b.sizeDelta = new Vector2(0, bottom);
-            }
-            return containerGO;
-        }
         internal static Sprite GetSolidPointSprite()
         {
             if (_solidPointSprite != null) return _solidPointSprite;
@@ -170,30 +131,6 @@ namespace CookBook
 
             _solidPointSprite = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
             return _solidPointSprite;
-        }
-        internal static Sprite GetTaperedSprite()
-        {
-            if (_taperedGradientSprite != null) return _taperedGradientSprite;
-
-            int width = 256;
-            int height = 1;
-            var tex = new Texture2D(width, height, TextureFormat.ARGB32, false);
-            tex.wrapMode = TextureWrapMode.Clamp;
-            tex.filterMode = FilterMode.Bilinear;
-
-            Color[] colors = new Color[width * height];
-            for (int x = 0; x < width; x++)
-            {
-                float t = x / (float)(width - 1);
-                float alpha = Mathf.Sin(t * Mathf.PI);
-                colors[x] = new Color(1, 1, 1, alpha);
-            }
-
-            tex.SetPixels(colors);
-            tex.Apply();
-
-            _taperedGradientSprite = Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f));
-            return _taperedGradientSprite;
         }
 
         // ========= Pixel rounding for clean borders =========
