@@ -17,17 +17,18 @@ All sizes are canvas units at the reference panel (554 x 624). See [Workflow](Wo
 ```
 ResultSlot            RectTransform, LayoutElement (58 x 58), SlotView
 ├─ IconBackground     Image (5, 5, 5), stretched
-├─ Icon               Image, stretched, 8 inset, preserve aspect
+├─ Icon               Image, AsyncImage, stretched, 8 inset, preserve aspect
 └─ StackText          TextMeshProUGUI 10pt top right, anchored top right at (-6, -3)
 ```
 
 **SlotView refs**
 - `Icon` → `Icon`
+- `IconLoader` → `Icon`'s `AsyncImage`
 - `StackText` → `StackText`
 
 **Added at runtime**
 - Two vanilla outline layers, cloned from the crafting panel's result box, go in at index 1 and 2, between `IconBackground` and `Icon`. Keep `IconBackground` first.
-- The sprite and stack count are set per row.
+- The sprite loads through `IconLoader` and the stack count is set per row.
 
 ## IngredientSlot and its variants
 
@@ -36,12 +37,13 @@ IngredientSlot        RectTransform, LayoutElement (42 x 42), SlotView
 ├─ Background         Image, Outline, stretched
 │  └─ BorderGroup_Solid   LayoutElement (ignore layout), PixelBorder
 │     ├─ Top / Bottom / Left / Right   Image (209, 209, 210, 200)
-├─ Icon               Image, stretched, 4 inset, preserve aspect
+├─ Icon               Image, AsyncImage, stretched, 4 inset, preserve aspect
 └─ StackText          TextMeshProUGUI 10pt top right, anchored top right at (-2, -2), starts inactive
 ```
 
 **SlotView refs**
 - `Icon` → `Icon`
+- `IconLoader` → `Icon`'s `AsyncImage`
 - `StackText` → `StackText`
 
 **Variants**
@@ -60,5 +62,6 @@ IngredientSlot        RectTransform, LayoutElement (42 x 42), SlotView
 ## Rules
 
 - **Text fonts stay empty.** The game's default font fills in at runtime. A font set here would be packed into the bundle.
+- **AsyncImage** is the game's icon loader. It loads the sprite async and shares it with vanilla UI. Its `Renderer` points at the `Icon` image and `Disable While Loading` stays on, so no white box shows while it loads.
 - **Keep every `SlotView` ref wired.** The build and the tests fail on an empty ref. In game, a broken slot logs why and the CookBook panel stays off.
 - **Renaming a prefab** means updating its name in `UIBundleInfo.Prefabs` too.

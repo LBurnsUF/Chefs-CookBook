@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using RoR2.UI;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -29,6 +30,7 @@ namespace CookBook.Tests
             var errors = ViewValidator.Validate(root, typeof(SlotView));
 
             Assert.That(errors, Has.Some.Contains("SlotView.Icon not set"));
+            Assert.That(errors, Has.Some.Contains("SlotView.IconLoader not set"));
             Assert.That(errors, Has.Some.Contains("SlotView.StackText not set"));
         }
 
@@ -38,6 +40,7 @@ namespace CookBook.Tests
             var root = Make("Slot");
             var view = root.AddComponent<SlotView>();
             view.Icon = MakeChild(root, "Icon").AddComponent<Image>();
+            view.IconLoader = view.Icon.gameObject.AddComponent<AsyncImage>();
             view.StackText = MakeChild(root, "Stack").AddComponent<TextMeshProUGUI>();
 
             Assert.That(ViewValidator.Validate(root, typeof(SlotView)), Is.Empty);

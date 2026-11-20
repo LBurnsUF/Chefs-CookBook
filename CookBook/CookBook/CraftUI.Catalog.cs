@@ -24,47 +24,42 @@ namespace CookBook
 
         // obsolete direct sprite still needed for modded content
 #pragma warning disable CS0618
-        internal static Sprite GetIcon(int unifiedIndex)
+        internal static bool TryGetIcon(int unifiedIndex, out AssetReferenceT<Sprite> reference, out Sprite direct)
         {
-            if (_iconCache.TryGetValue(unifiedIndex, out var sprite)) return sprite;
-
             if (unifiedIndex < ItemCatalog.itemCount)
             {
                 var idef = ItemCatalog.GetItemDef((ItemIndex)unifiedIndex);
-                if (idef != null) sprite = LoadIcon(idef.pickupIconSpriteReference, idef.pickupIconSprite);
+                if (idef != null) return PickIconSource(idef.pickupIconSpriteReference, idef.pickupIconSprite, out reference, out direct);
             }
             else
             {
                 int equipIdx = unifiedIndex - ItemCatalog.itemCount;
                 var edef = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)equipIdx);
-                if (edef != null) sprite = LoadIcon(edef.pickupIconSpriteReference, edef.pickupIconSprite);
+                if (edef != null) return PickIconSource(edef.pickupIconSpriteReference, edef.pickupIconSprite, out reference, out direct);
             }
 
-            if (sprite != null) _iconCache[unifiedIndex] = sprite;
-            return sprite;
+            reference = null;
+            direct = null;
+            return false;
         }
 
-        internal static Sprite GetDroneIcon(DroneIndex droneIndex)
+        internal static bool TryGetDroneIcon(DroneIndex droneIndex, out AssetReferenceT<Sprite> reference, out Sprite direct)
         {
-            if (_droneIconCache.TryGetValue(droneIndex, out var sprite)) return sprite;
-
             var def = DroneCatalog.GetDroneDef(droneIndex);
-            sprite = def != null ? LoadIcon(def.iconSpriteReference, def.iconSprite) : null;
-            if (sprite != null)
-            {
-                _droneIconCache[droneIndex] = sprite;
-                return sprite;
-            }
-            return null;
+            if (def != null) return PickIconSource(def.iconSpriteReference, def.iconSprite, out reference, out direct);
+
+            reference = null;
+            direct = null;
+            return false;
         }
 #pragma warning restore CS0618
 
-        // v1.5.0: vanilla icons are addressable only, direct sprite is modded content
-        private static Sprite LoadIcon(AssetReferenceT<Sprite> reference, Sprite direct)
+        // v1.5.0: vanilla icons are addressable only, direct sprite is modded content and wins
+        private static bool PickIconSource(AssetReferenceT<Sprite> address, Sprite sprite, out AssetReferenceT<Sprite> reference, out Sprite direct)
         {
-            if (direct != null) return direct;
-            if (reference == null || !reference.RuntimeKeyIsValid()) return null;
-            return Addressables.LoadAssetAsync<Sprite>(reference.RuntimeKey).WaitForCompletion();
+            direct = sprite;
+            reference = direct == null && address != null && address.RuntimeKeyIsValid() ? address : null;
+            return direct != null || reference != null;
         }
 
         internal static Color GetEntryColor(CraftableEntry entry)

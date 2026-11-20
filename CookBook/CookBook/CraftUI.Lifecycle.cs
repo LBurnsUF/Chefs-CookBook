@@ -356,8 +356,6 @@ namespace CookBook
             _repeatInputField = null;
 
             _recipeRowUIs.Clear();
-            _iconCache.Clear();
-            _droneIconCache.Clear();
             ClearButtonRefs();
 
             _skeletonBuilt = false;

@@ -54,8 +54,6 @@ namespace CookBook
 
         internal static Sprite _solidPointSprite;
 
-        internal static readonly Dictionary<int, Sprite> _iconCache = new();
-        internal static readonly Dictionary<DroneIndex, Sprite> _droneIconCache = new();
         internal static readonly List<RecipeRowUI> _recipeRowUIs = new();
 
         internal static System.Reflection.MethodInfo _onIngredientsChangedMethod;

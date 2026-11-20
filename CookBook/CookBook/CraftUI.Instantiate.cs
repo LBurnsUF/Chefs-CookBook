@@ -1,6 +1,7 @@
 ﻿using RoR2;
 using TMPro;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 using static CookBook.CraftPlanner;
 
@@ -57,20 +58,17 @@ namespace CookBook
             if (view.PathsText != null) view.PathsText.text = $"Paths: {entry.Chains.Count}";
 
             // ---------------- ItemIcon ----------------
-            if (view.ResultSlot.Icon != null)
+            if (TryGetIcon(entry.ResultIndex, out var iconRef, out var iconSprite))
             {
-                Sprite iconSprite = GetIcon(entry.ResultIndex);
-
-                if (iconSprite != null)
-                {
-                    view.ResultSlot.Icon.sprite = iconSprite;
-                    view.ResultSlot.Icon.color = Color.white;
-                }
-                else
-                {
-                    view.ResultSlot.Icon.sprite = null;
-                    view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.1f);
-                }
+                view.ResultSlot.IconLoader.SetAssetOrDirectReference(iconRef, iconSprite);
+                view.ResultSlot.Icon.color = Color.white;
+            }
+            else
+            {
+                // the loader hides the icon mid load
+                view.ResultSlot.IconLoader.Clear();
+                view.ResultSlot.Icon.enabled = true;
+                view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.1f);
             }
 
             // ---------------- Stack Text ----------------
@@ -118,8 +116,7 @@ namespace CookBook
             {
                 foreach (var ingredient in chain.PhysicalCostSparse)
                 {
-                    Sprite icon = GetIcon(ingredient.UnifiedIndex);
-                    if (icon != null) InstantiateSlot(_ingredientSlotTemplate, runtime.View.VisualRect, icon, ingredient.Count);
+                    if (TryGetIcon(ingredient.UnifiedIndex, out var iconRef, out var icon)) InstantiateSlot(_ingredientSlotTemplate, runtime.View.VisualRect, iconRef, icon, ingredient.Count);
                 }
             }
 
@@ -127,8 +124,7 @@ namespace CookBook
             {
                 foreach (var trade in chain.AlliedTradeSparse)
                 {
-                    Sprite icon = GetIcon(trade.UnifiedIndex);
-                    if (icon != null) InstantiateSlot(_tradeSlotTemplate, runtime.View.VisualRect, icon, trade.TradesRequired);
+                    if (TryGetIcon(trade.UnifiedIndex, out var iconRef, out var icon)) InstantiateSlot(_tradeSlotTemplate, runtime.View.VisualRect, iconRef, icon, trade.TradesRequired);
                 }
             }
 
@@ -140,13 +136,12 @@ namespace CookBook
                 {
                     if (requirement.DroneIdx != DroneIndex.None)
                     {
-                        Sprite droneSprite = GetDroneIcon(requirement.DroneIdx);
-                        if (droneSprite != null)
+                        if (TryGetDroneIcon(requirement.DroneIdx, out var droneRef, out var droneSprite))
                         {
                             bool isAlliedDrone = requirement.Owner != null && requirement.Owner != localUser;
                             GameObject template = isAlliedDrone ? _tradeSlotTemplate : _droneSlotTemplate;
 
-                            InstantiateSlot(template, runtime.View.VisualRect, droneSprite, requirement.Count);
+                            InstantiateSlot(template, runtime.View.VisualRect, droneRef, droneSprite, requirement.Count);
                         }
                     }
                 }
@@ -155,7 +150,7 @@ namespace CookBook
             return pathRowGO;
         }
 
-        internal static void InstantiateSlot(GameObject template, Transform parentrow, Sprite icon, int count)
+        internal static void InstantiateSlot(GameObject template, Transform parentrow, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
         {
             if (template == null) return;
             GameObject slotGO = UnityEngine.Object.Instantiate(template, parentrow);
@@ -164,7 +159,7 @@ namespace CookBook
             var slot = slotGO.GetComponent<SlotView>();
             if (!slot) return;
 
-            if (slot.Icon) slot.Icon.sprite = icon;
+            slot.IconLoader.SetAssetOrDirectReference(iconRef, icon);
 
             if (slot.StackText)
             {
