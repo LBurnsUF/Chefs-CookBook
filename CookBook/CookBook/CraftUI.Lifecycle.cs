@@ -95,7 +95,7 @@ namespace CookBook
             {
                 DestroyPanel();
                 BuildPanel(craftingPanel, bgContainerTr, size, position);
-                if (LastCraftables != null && LastCraftables.Count > 0) PopulateRecipeList(LastCraftables);
+                if (LastCraftables != null) PopulateRecipeList(LastCraftables);
             }
             else MountPanel(craftingPanel, bgContainerTr, position);
         }
@@ -349,6 +349,7 @@ namespace CookBook
             _currentHoveredPath = null;
             _selectedPathUI = null;
             _cachedDropdownOwner = null;
+            _emptyRow = null;
             _slotPoolRoot = null;
             _globalCraftButton = null;
             _globalCraftButtonText = null;

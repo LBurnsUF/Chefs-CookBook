@@ -89,6 +89,63 @@ namespace CookBook
             if (view.RowLayoutElement != null) view.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
         }
 
+        // says why the list is empty, nothing craftable or all filtered out
+        internal static void RefreshEmptyRow()
+        {
+            if (_recipeListContent == null) return;
+
+            bool anyShown = false;
+            foreach (var row in _recipeRowUIs)
+            {
+                if (row.RowGO != null && row.RowGO.activeSelf)
+                {
+                    anyShown = true;
+                    break;
+                }
+            }
+
+            if (anyShown)
+            {
+                if (_emptyRow != null) _emptyRow.gameObject.SetActive(false);
+                return;
+            }
+
+            if (_emptyRow == null)
+            {
+                _emptyRow = CreateRecipeRow(_recipeListContent);
+                if (_emptyRow == null) return;
+                BindEmptyRow(_emptyRow);
+            }
+
+            _emptyRow.transform.SetParent(_recipeListContent, false);
+            _emptyRow.transform.SetAsLastSibling();
+            _emptyRow.gameObject.SetActive(true);
+            _emptyRow.View.ItemLabel.text = _recipeRowUIs.Count == 0 ? "NONE" : "FILTER TOO NARROW";
+        }
+
+        internal static void BindEmptyRow(RecipeRowRuntime runtime)
+        {
+            runtime.Entry = null;
+            runtime.IsExpanded = false;
+
+            var view = runtime.View;
+            if (view.RowTopButton != null) view.RowTopButton.interactable = false;
+            if (view.ArrowText != null) view.ArrowText.gameObject.SetActive(false);
+            if (view.ItemLabel != null) view.ItemLabel.color = Color.gray;
+            if (view.DepthText != null) view.DepthText.text = "";
+            if (view.PathsText != null) view.PathsText.text = "";
+
+            // hatched empty slot, this row is never rebound to a recipe
+            view.ResultSlot.Icon.type = Image.Type.Tiled;
+            view.ResultSlot.Icon.pixelsPerUnitMultiplier = 2f;
+            view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.3f);
+            view.ResultSlot.IconLoader.SetAssetOrDirectReference(HatchingTileRef, null);
+            if (view.ResultSlot.StackText != null) view.ResultSlot.StackText.gameObject.SetActive(false);
+
+            if (view.DropdownLayoutElement != null) view.DropdownLayoutElement.preferredHeight = 0f;
+            if (view.RowLayoutElement != null) view.RowLayoutElement.preferredHeight = runtime.CollapsedHeight;
+        }
+
         // reticle marks gamepad focus on row headers
         internal static void OnRowTopHighlightChanged(RecipeRowRuntime runtime, bool lit)
         {

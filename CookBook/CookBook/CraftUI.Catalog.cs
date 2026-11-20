@@ -8,6 +8,9 @@ namespace CookBook
 {
     internal static partial class CraftUI
     {
+        // RoR2/Base/UI/texUIHatchingTile.png, the hud bar stripes
+        private static readonly AssetReferenceT<Sprite> HatchingTileRef = new AssetReferenceT<Sprite>("5966ada566cc9ac4e88882edffcb4578");
+
         internal static string GetEntryDisplayName(CraftableEntry entry)
         {
             if (entry == null) return "Unknown Result";

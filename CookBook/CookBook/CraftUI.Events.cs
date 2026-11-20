@@ -265,6 +265,7 @@ namespace CookBook
         internal static void RefreshUIVisibility()
         {
             RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField?.text);
+            RefreshEmptyRow();
             RebuildNavigation();
 
             if (_currentController != null)

@@ -47,6 +47,13 @@ namespace CookBook
                 _sharedDropdown.CurrentOwner = null;
             }
 
+            // kept out of the reused rows
+            if (_emptyRow != null)
+            {
+                _emptyRow.transform.SetParent(_cookbookRoot.transform, false);
+                _emptyRow.gameObject.SetActive(false);
+            }
+
             CraftableEntry previousEntry = null;
             RecipeChain chainToRestoreHover = null;
             // collapsing the open row below clears the selection
@@ -113,6 +120,7 @@ namespace CookBook
 
             // reused rows keep old filter state
             RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField ? _searchInputField.text : null);
+            RefreshEmptyRow();
 
             LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeListContent);
             PixelSnap(_recipeListContent);
