@@ -106,4 +106,34 @@
 		</Reference>
 	</ItemGroup>
 
+	<!-- dotnet build -c Release -t:Package, zips the Thunderstore upload next to the builds -->
+	<PropertyGroup>
+		<RepoRoot>$(MSBuildProjectDirectory)\..\..</RepoRoot>
+		<UIBundlePath>$(RepoRoot)\CookBook.Unity\AssetBundles\cookbookui</UIBundlePath>
+	</PropertyGroup>
+
+	<Target Name="Package" DependsOnTargets="Build">
+		<PropertyGroup>
+			<ManifestVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RepoRoot)\manifest.json')), '"version_number":\s*"([^"]+)"').Groups[1].Value)</ManifestVersion>
+			<PluginVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\Plugin.cs')), 'PluginVersion = "([^"]+)"').Groups[1].Value)</PluginVersion>
+			<PackageDir>$(BaseOutputPath)\package</PackageDir>
+			<PackageZip>$(BaseOutputPath)\CookBook-$(ManifestVersion).zip</PackageZip>
+		</PropertyGroup>
+
+		<Error Condition="'$(Configuration)' != 'Release'" Text="Package: Release only, Debug ships the profiler." />
+		<Error Condition="'$(ManifestVersion)' != '$(PluginVersion)'" Text="Package: manifest.json is $(ManifestVersion) but PluginVersion is $(PluginVersion)." />
+		<!-- the panel stays off without the bundle -->
+		<Error Condition="!Exists('$(UIBundlePath)')" Text="Package: $(UIBundlePath) missing, build it in CookBook.Unity first." />
+
+		<ItemGroup>
+			<PackageFiles Include="$(RepoRoot)\manifest.json;$(RepoRoot)\README.md;$(RepoRoot)\icon.png;$(RepoRoot)\CHANGELOG.md" />
+			<PackageFiles Include="$(TargetPath);$(OutDir)CookBook.UI.dll;$(UIBundlePath)" />
+		</ItemGroup>
+
+		<RemoveDir Directories="$(PackageDir)" />
+		<Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(PackageDir)" />
+		<ZipDirectory SourceDirectory="$(PackageDir)" DestinationFile="$(PackageZip)" Overwrite="true" />
+		<Message Importance="high" Text="Package: $(PackageZip)" />
+	</Target>
+
 </Project>

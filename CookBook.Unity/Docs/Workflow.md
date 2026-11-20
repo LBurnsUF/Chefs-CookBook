@@ -51,7 +51,16 @@ Unity must be closed for the batch commands. Opening the project in the editor l
 - The log line `UIBundle: 9/9 prefabs loaded` means the bundle is in use.
 - A missing or broken prefab logs why, and the CookBook panel stays off. The vanilla crafting panel is left as it is.
 - A missing bundle does the same.
-- Debug builds also check the code-built templates and log any empty refs.
+
+## Release
+
+From `CookBook/CookBook`, after building the bundle:
+```
+dotnet build CookBook.csproj -c Release -t:Package
+```
+- It writes `CookBook-<version>.zip` next to the build folders, holding `manifest.json`, `README.md`, `icon.png`, `CHANGELOG.md`, `CookBook.dll`, `CookBook.UI.dll` and `cookbookui`.
+- It stops if `cookbookui` is missing, or if `manifest.json` and `PluginVersion` disagree.
+- A bundle left over from before a prefab edit still gets packed. Rebuild it first.
 
 ## Guides
 
