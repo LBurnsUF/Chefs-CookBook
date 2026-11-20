@@ -19,7 +19,7 @@ namespace CookBook
             InstallGamepadBindings(_cookbookRoot);
             EnsureResultSlotArtTemplates(craftingPanel);
             EnsureIngredientSlotTemplate();
-            BuildRecipeRowTemplate();
+            EnsureRecipeRowTemplate();
             EnsurePathRowTemplate();
             EnsureSharedDropdown();
             BuildSharedHoverRect();
@@ -343,10 +343,20 @@ namespace CookBook
         }
 
         //==================== Prefabs ====================
-        internal static void BuildRecipeRowTemplate()
+        internal static void EnsureRecipeRowTemplate()
         {
             if (_recipeRowTemplate != null) return;
 
+            var bundled = InstantiateBundleTemplate("RecipeRow");
+            // the nested slot comes from the prefab, so it still needs the vanilla outlines
+            if (bundled) AddResultOutlines(_craftingPanel, bundled.GetComponent<RecipeRowView>().ResultSlot.transform);
+
+            _recipeRowTemplate = bundled ?? BuildRecipeRowTemplate();
+            BindRecipeRowTemplate(_recipeRowTemplate);
+        }
+
+        private static GameObject BuildRecipeRowTemplate()
+        {
             float topPadPx = RoundToEven(RowTopTopPaddingNorm * _panelHeight);
             float bottomPadPx = RoundToEven(RowTopBottomPaddingNorm * _panelHeight);
             float elementSpacingPx = RoundToEven(RowTopElementSpacingNorm * _panelWidth);
@@ -358,7 +368,7 @@ namespace CookBook
             float innerHeight = rowTopHeightPx - (topPadPx + bottomPadPx);
 
             // ---------------- RecipeRow root ----------------
-            GameObject rowGO = CreateUIObject("RecipeRowTemplate", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(RecipeRowView), typeof(RecipeRowRuntime));
+            GameObject rowGO = CreateUIObject("RecipeRowTemplate", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement), typeof(RecipeRowView));
 
             var rowRT = rowGO.GetComponent<RectTransform>();
             var rowVLG = rowGO.GetComponent<VerticalLayoutGroup>();
@@ -394,7 +404,6 @@ namespace CookBook
             var rowTopBtn = rowTopGO.GetComponent<CookBookButton>();
             rowTopBtn.targetGraphic = rowTopImg;
             rowTopBtn.transition = Selectable.Transition.None;
-            rowTopBtn.requiredTopLayer = _vanillaTopLayer;
 
             rowTopRT.SetParent(rowRT, false);
 
@@ -560,14 +569,18 @@ namespace CookBook
             view.DepthText = depthTMP;
             view.PathsText = pathsTMP;
 
-            // ---------------- Runtime wiring ----------------
-            var runtime = rowGO.GetComponent<RecipeRowRuntime>();
-            runtime.Entry = null;
-            runtime.View = view;
-            runtime.CollapsedHeight = rowRT.sizeDelta.y;
-            runtime.IsExpanded = false;
+            return rowGO;
+        }
 
-            _recipeRowTemplate = rowGO;
+        // runtime state and the vanilla layer can't live in the prefab
+        private static void BindRecipeRowTemplate(GameObject rowGO)
+        {
+            var view = rowGO.GetComponent<RecipeRowView>();
+            view.RowTopButton.requiredTopLayer = _vanillaTopLayer;
+
+            var runtime = rowGO.AddComponent<RecipeRowRuntime>();
+            runtime.View = view;
+            runtime.CollapsedHeight = view.RowTransform.sizeDelta.y;
         }
 
         internal static void EnsurePathRowTemplate()

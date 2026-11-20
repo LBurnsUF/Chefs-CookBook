@@ -21,6 +21,7 @@ namespace CookBook
             ("TradeSlot", typeof(SlotView)),
             ("PathRow", typeof(PathRowView)),
             ("Dropdown", typeof(DropdownView)),
+            ("RecipeRow", typeof(RecipeRowView)),
         };
     }
 }
