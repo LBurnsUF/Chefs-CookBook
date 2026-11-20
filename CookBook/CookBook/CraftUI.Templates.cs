@@ -21,7 +21,7 @@ namespace CookBook
             EnsureIngredientSlotTemplate();
             BuildRecipeRowTemplate();
             EnsurePathRowTemplate();
-            BuildSharedDropdown();
+            EnsureSharedDropdown();
             BuildSharedHoverRect();
 
             _skeletonBuilt = true;
@@ -656,15 +656,19 @@ namespace CookBook
             rowGO.AddComponent<PathRowRuntime>().View = view;
         }
 
-        internal static void BuildSharedDropdown()
+        internal static void EnsureSharedDropdown()
         {
             if (_sharedDropdown != null) return;
+            var drawerGO = InstantiateBundleTemplate("Dropdown") ?? BuildSharedDropdown();
+            BindSharedDropdown(drawerGO);
+        }
 
-            GameObject drawerGO = CreateUIObject("SharedDropdown", typeof(RectTransform), typeof(Image), typeof(NestedScrollRect), typeof(DropdownView), typeof(RecipeDropdownRuntime));
+        private static GameObject BuildSharedDropdown()
+        {
+            GameObject drawerGO = CreateUIObject("SharedDropdown", typeof(RectTransform), typeof(Image), typeof(NestedScrollRect), typeof(DropdownView));
 
             var drawerRT = drawerGO.GetComponent<RectTransform>();
             var img = drawerGO.GetComponent<Image>();
-            _sharedDropdown = drawerGO.GetComponent<RecipeDropdownRuntime>();
 
             drawerRT.anchorMin = new Vector2(0f, 0f);
             drawerRT.anchorMax = new Vector2(1f, 1f);
@@ -683,12 +687,6 @@ namespace CookBook
             scroll.inertia = true;
             scroll.decelerationRate = 0.16f;
             scroll.elasticity = 0.1f;
-
-            if (_cookbookRoot)
-            {
-                var mainScroll = _cookbookRoot.GetComponentInChildren<ScrollRect>();
-                scroll.ParentScroll = mainScroll;
-            }
 
             var viewportGO = CreateUIObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
 
@@ -729,10 +727,21 @@ namespace CookBook
             var view = drawerGO.GetComponent<DropdownView>();
             view.ScrollRect = scroll;
             view.Content = contentRT;
-            _sharedDropdown.View = view;
             drawerGO.transform.SetParent(_cookbookRoot.transform, false);
             drawerGO.AddComponent<ScrollFollowSelection>().Scroll = scroll;
             drawerGO.SetActive(false);
+
+            return drawerGO;
+        }
+
+        // runtime and the list scroll it hands off to live outside the prefab
+        private static void BindSharedDropdown(GameObject drawerGO)
+        {
+            var view = drawerGO.GetComponent<DropdownView>();
+            view.ScrollRect.ParentScroll = _recipeListContent.GetComponentInParent<ScrollRect>();
+
+            _sharedDropdown = drawerGO.AddComponent<RecipeDropdownRuntime>();
+            _sharedDropdown.View = view;
         }
 
         internal static void BuildSharedHoverRect()

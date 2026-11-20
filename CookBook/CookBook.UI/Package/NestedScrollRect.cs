@@ -5,7 +5,8 @@ namespace CookBook
 {
     public class NestedScrollRect : ScrollRect
     {
-        public ScrollRect ParentScroll;
+        // the list outside the prefab, set at runtime
+        [OptionalRef] public ScrollRect ParentScroll;
 
         public override void OnScroll(PointerEventData data)
         {
