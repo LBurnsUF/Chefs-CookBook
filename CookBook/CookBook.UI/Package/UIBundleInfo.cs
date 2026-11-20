@@ -8,7 +8,17 @@ namespace CookBook
         public const string FileName = "cookbookui";
         public const string PrefabFolder = "Assets/UI";
 
-        // prefab name and the view on its root, filled as prefabs land
-        public static readonly (string Name, Type View)[] Prefabs = Array.Empty<(string, Type)>();
+        // panel size prefabs are authored at, other sizes scale the panel root
+        public const float PanelWidth = 554f;
+        public const float PanelHeight = 624f;
+
+        // prefab name and the view on its root
+        public static readonly (string Name, Type View)[] Prefabs =
+        {
+            ("ResultSlot", typeof(SlotView)),
+            ("PhysicalSlot", typeof(SlotView)),
+            ("DroneSlot", typeof(SlotView)),
+            ("TradeSlot", typeof(SlotView)),
+        };
     }
 }

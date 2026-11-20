@@ -215,7 +215,7 @@ namespace CookBook
             if (_repeatInputField)
             {
                 _repeatInputField.text = string.Empty;
-                if (_repeatInputField.placeholder is TextMeshProUGUI ph) ph.text = "";
+                if (_repeatInputField.placeholder is TextMeshProUGUI ph) ph.text = "Qty";
             }
 
             RebuildNavigation();

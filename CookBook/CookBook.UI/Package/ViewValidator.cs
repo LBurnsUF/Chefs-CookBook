@@ -48,6 +48,8 @@ namespace CookBook
             foreach (var field in comp.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (!typeof(UnityEngine.Object).IsAssignableFrom(field.FieldType)) continue;
+                // vanilla base fields are optional extras
+                if (field.DeclaringType.Assembly != typeof(ViewValidator).Assembly) continue;
                 if (field.IsDefined(typeof(OptionalRefAttribute), false)) continue;
 
                 var value = field.GetValue(comp) as UnityEngine.Object;

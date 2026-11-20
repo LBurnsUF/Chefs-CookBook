@@ -227,8 +227,11 @@ namespace CookBook
             _runner = _cookbookRoot.GetComponent<CraftUIRunner>();
             _cookbookRoot.GetComponent<Canvas>().pixelPerfect = true;
 
+            // layout runs at the authored size, scale fits it to this panel
             RectTransform cbRT = _cookbookRoot.GetComponent<RectTransform>();
-            cbRT.sizeDelta = size;
+            float fit = size.y / UIBundleInfo.PanelHeight;
+            cbRT.sizeDelta = new Vector2(size.x / fit, UIBundleInfo.PanelHeight);
+            cbRT.localScale = new Vector3(fit, fit, 1f);
             _builtSize = size;
 
             // build mounted so canvas scale matches

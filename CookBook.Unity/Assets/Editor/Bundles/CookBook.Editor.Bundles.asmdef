@@ -2,7 +2,9 @@
   "name": "CookBook.Editor.Bundles",
   "rootNamespace": "CookBook.Editor",
   "references": [
-    "CookBook.UI"
+    "CookBook.UI",
+    "Unity.TextMeshPro",
+    "UnityEngine.UI"
   ],
   "includePlatforms": [
     "Editor"

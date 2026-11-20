@@ -251,7 +251,7 @@ namespace CookBook
             var RepeatTextAreaRT = CreateInternal("Text Area", repeatRT, typeof(RectMask2D));
 
             var repeatPhTMP = CreateInternal("Placeholder", RepeatTextAreaRT, typeof(TextMeshProUGUI)).GetComponent<TextMeshProUGUI>();
-            repeatPhTMP.text = "1";
+            repeatPhTMP.text = "Qty";
             repeatPhTMP.fontSize = footerHeightPx * 0.45f;
             repeatPhTMP.alignment = TextAlignmentOptions.Center;
             repeatPhTMP.color = new Color(1f, 1f, 1f, 0.5f);
@@ -769,7 +769,12 @@ namespace CookBook
         internal static void EnsureResultSlotArtTemplates(CraftingPanel craftingPanel)
         {
             if (_ResultSlotTemplate != null) return;
+            _ResultSlotTemplate = InstantiateBundleTemplate("ResultSlot") ?? BuildResultSlotTemplate();
+            AddResultOutlines(craftingPanel, _ResultSlotTemplate.transform);
+        }
 
+        private static GameObject BuildResultSlotTemplate()
+        {
             // configure base dimensions
             float topPadPx = RoundToEven(RowTopTopPaddingNorm * _panelHeight);
             float bottomPadPx = RoundToEven(RowTopBottomPaddingNorm * _panelHeight);
@@ -812,21 +817,6 @@ namespace CookBook
 
             bgImg.color = new Color32(5, 5, 5, 255);
             bgImg.raycastTarget = false;
-
-            // Instantiate vanilla borders for cleanliness
-            var outlineInnerloc = craftingPanel.transform.Find("MainPanel/Juice/BGContainer/CraftingContainer/Background/Result/Holder/Outline (1)");
-            var outlineOuterloc = craftingPanel.transform.Find("MainPanel/Juice/BGContainer/CraftingContainer/Background/Result/Holder/Outline");
-
-            if (outlineInnerloc && outlineOuterloc)
-            {
-                var inner = InstantiateLayer(outlineInnerloc.gameObject, slotRT);
-                inner.name = "ResultOutlineInner";
-                inner.SetActive(true);
-
-                var outer = InstantiateLayer(outlineOuterloc.gameObject, slotRT);
-                outer.name = "ResultOutlineOuter";
-                outer.SetActive(true);
-            }
 
             // initialize icon container
             var iconGO = CreateUIObject("Icon", typeof(RectTransform), typeof(Image));
@@ -872,15 +862,33 @@ namespace CookBook
             view.Icon = iconImg;
             view.StackText = stackTMP;
 
-            _ResultSlotTemplate = slotGO;
+            return slotGO;
+        }
+
+        // vanilla art can't ship in our bundle, clone it in above the background
+        private static void AddResultOutlines(CraftingPanel craftingPanel, Transform slotRT)
+        {
+            var outlineInnerloc = craftingPanel.transform.Find("MainPanel/Juice/BGContainer/CraftingContainer/Background/Result/Holder/Outline (1)");
+            var outlineOuterloc = craftingPanel.transform.Find("MainPanel/Juice/BGContainer/CraftingContainer/Background/Result/Holder/Outline");
+            if (!outlineInnerloc || !outlineOuterloc) return;
+
+            var inner = InstantiateLayer(outlineInnerloc.gameObject, slotRT);
+            inner.name = "ResultOutlineInner";
+            inner.SetActive(true);
+            inner.transform.SetSiblingIndex(1);
+
+            var outer = InstantiateLayer(outlineOuterloc.gameObject, slotRT);
+            outer.name = "ResultOutlineOuter";
+            outer.SetActive(true);
+            outer.transform.SetSiblingIndex(2);
         }
 
         internal static void EnsureIngredientSlotTemplate()
         {
             if (_ingredientSlotTemplate != null) return;
-            _ingredientSlotTemplate = BuildIngredientTemplate("PhysicalSlot", new Color32(16, 8, 10, 255));
-            _droneSlotTemplate = BuildIngredientTemplate("DroneSlot", new Color32(20, 50, 45, 255));
-            _tradeSlotTemplate = BuildIngredientTemplate("TradeSlot", new Color32(75, 65, 25, 255));
+            _ingredientSlotTemplate = InstantiateBundleTemplate("PhysicalSlot") ?? BuildIngredientTemplate("PhysicalSlot", new Color32(16, 8, 10, 255));
+            _droneSlotTemplate = InstantiateBundleTemplate("DroneSlot") ?? BuildIngredientTemplate("DroneSlot", new Color32(20, 50, 45, 255));
+            _tradeSlotTemplate = InstantiateBundleTemplate("TradeSlot") ?? BuildIngredientTemplate("TradeSlot", new Color32(75, 65, 25, 255));
         }
 
         internal static GameObject BuildIngredientTemplate(string name, Color32 bgColor)
@@ -966,6 +974,18 @@ namespace CookBook
             view.Icon = iconImg;
             view.StackText = stackTMP;
             return slotGO;
+        }
+
+        //==================== Bundle ====================
+        // bundle prefab as an inactive template, null when the bundle lacks it
+        private static GameObject InstantiateBundleTemplate(string name)
+        {
+            if (!UIBundle.TryGetPrefab(name, out var prefab)) return null;
+
+            var go = UnityEngine.Object.Instantiate(prefab, _cookbookRoot.transform, false);
+            go.name = name;
+            go.SetActive(false);
+            return go;
         }
 
 #if COOKBOOK_PERF

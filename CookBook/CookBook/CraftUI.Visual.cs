@@ -49,14 +49,15 @@ namespace CookBook
         // =============== Border Logic ===================
         public static GameObject AddBorder(RectTransform parent, Color32 color, float top = 0f, float bottom = 0f, float left = 0f, float right = 0f)
         {
-            if (top > 0) top = GetPixelCorrectThickness(top);
-            if (bottom > 0) bottom = GetPixelCorrectThickness(bottom);
-            if (left > 0) left = GetPixelCorrectThickness(left);
-            if (right > 0) right = GetPixelCorrectThickness(right);
-            // ----------------
-
-            var containerGO = CreateUIObject("BorderGroup_Solid", typeof(RectTransform), typeof(LayoutElement));
+            var containerGO = CreateUIObject("BorderGroup_Solid", typeof(RectTransform), typeof(LayoutElement), typeof(PixelBorder));
             var containerRT = containerGO.GetComponent<RectTransform>();
+
+            // thickness in pixels, refit on each remount
+            var border = containerGO.GetComponent<PixelBorder>();
+            border.Top = top;
+            border.Bottom = bottom;
+            border.Left = left;
+            border.Right = right;
 
             var le = containerGO.GetComponent<LayoutElement>();
             le.ignoreLayout = true;
@@ -86,7 +87,7 @@ namespace CookBook
                 t.anchorMin = new Vector2(0, 1); t.anchorMax = new Vector2(1, 1);
                 t.pivot = new Vector2(0.5f, 1); // Pivot Top
                 t.anchoredPosition = Vector2.zero;
-                t.sizeDelta = new Vector2(0, top);
+                border.TopBar = t;
             }
 
             if (bottom > 0)
@@ -95,7 +96,7 @@ namespace CookBook
                 b.anchorMin = new Vector2(0, 0); b.anchorMax = new Vector2(1, 0);
                 b.pivot = new Vector2(0.5f, 0); // Pivot Bottom
                 b.anchoredPosition = Vector2.zero;
-                b.sizeDelta = new Vector2(0, bottom);
+                border.BottomBar = b;
             }
 
             if (left > 0)
@@ -104,7 +105,7 @@ namespace CookBook
                 l.anchorMin = new Vector2(0, 0); l.anchorMax = new Vector2(0, 1);
                 l.pivot = new Vector2(0, 0.5f); // Pivot Left
                 l.anchoredPosition = Vector2.zero;
-                l.sizeDelta = new Vector2(left, 0);
+                border.LeftBar = l;
             }
 
             if (right > 0)
@@ -113,9 +114,10 @@ namespace CookBook
                 r.anchorMin = new Vector2(1, 0); r.anchorMax = new Vector2(1, 1);
                 r.pivot = new Vector2(1, 0.5f); // Pivot Right
                 r.anchoredPosition = Vector2.zero;
-                r.sizeDelta = new Vector2(right, 0);
+                border.RightBar = r;
             }
 
+            border.Refit();
             return containerGO;
         }
         public static GameObject AddBorderTapered(RectTransform parent, Color32 color, float top = 0f, float bottom = 0f)
@@ -218,18 +220,6 @@ namespace CookBook
             float result = Mathf.Round(value);
             if (result % 2 != 0) result += 1f;
             return result;
-        }
-        internal static float GetPixelCorrectThickness(float desiredPixels)
-        {
-            Canvas rootCanvas = _cookbookRoot ? _cookbookRoot.GetComponentInParent<Canvas>() : UnityEngine.Object.FindObjectOfType<Canvas>();
-
-            if (rootCanvas != null)
-            {
-                float pixelRatio = 1f / rootCanvas.scaleFactor;
-                return Mathf.Round(desiredPixels) * pixelRatio;
-            }
-
-            return desiredPixels;
         }
 
         // =================== Hover Reticle ========================
