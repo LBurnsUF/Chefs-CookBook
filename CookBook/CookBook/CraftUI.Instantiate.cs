@@ -164,17 +164,7 @@ namespace CookBook
         {
             if (_pathRowTemplate == null) return;
 
-            PathRowRuntime runtime;
-            if (index < parent.childCount) runtime = parent.GetChild(index).GetComponent<PathRowRuntime>();
-            else
-            {
-                GameObject pathRowGO = UnityEngine.Object.Instantiate(_pathRowTemplate, parent);
-                pathRowGO.name = "PathRow";
-                runtime = pathRowGO.GetComponent<PathRowRuntime>();
-                runtime.Panel = this;
-            }
-
-            runtime.gameObject.SetActive(true);
+            PathRowRuntime runtime = AcquirePathRow(parent, index);
             runtime.Init(owner, chain);
             ReleaseSlots(runtime);
 
@@ -214,9 +204,92 @@ namespace CookBook
             }
         }
 
-        internal void AddSlot(PathRowRuntime row, GameObject template, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
+        private PathRowRuntime AcquirePathRow(RectTransform parent, int index)
         {
-            if (template == null) return;
+            PathRowRuntime runtime;
+            if (index < parent.childCount) runtime = parent.GetChild(index).GetComponent<PathRowRuntime>();
+            else
+            {
+                GameObject pathRowGO = UnityEngine.Object.Instantiate(_pathRowTemplate, parent);
+                pathRowGO.name = "PathRow";
+                runtime = pathRowGO.GetComponent<PathRowRuntime>();
+                runtime.Panel = this;
+            }
+
+            runtime.gameObject.SetActive(true);
+            return runtime;
+        }
+
+        // the recipe behind a row you can't make yet, missing ingredients hatched
+        internal void BindProgressRow(RectTransform parent, int index, RecipeRowRuntime owner)
+        {
+            if (_pathRowTemplate == null) return;
+
+            PathRowRuntime runtime = AcquirePathRow(parent, index);
+            runtime.Init(owner, null);
+            ReleaseSlots(runtime);
+
+            var recipe = owner.Entry.ProgressRecipe;
+            var stacks = _snap.PhysicalStacks;
+
+            if (recipe.HasB && recipe.IngA == recipe.IngB) AddProgressSlot(runtime, stacks, recipe.IngA, recipe.CountA + recipe.CountB);
+            else
+            {
+                AddProgressSlot(runtime, stacks, recipe.IngA, recipe.CountA);
+                if (recipe.HasB) AddProgressSlot(runtime, stacks, recipe.IngB, recipe.CountB);
+            }
+        }
+
+        private void AddProgressSlot(PathRowRuntime row, int[] stacks, int idx, int needed)
+        {
+            if (!TryGetIcon(idx, out var iconRef, out var icon)) return;
+
+            var slot = AddSlot(row, _ingredientSlotTemplate, iconRef, icon, needed);
+            if (slot == null) return;
+
+            int owned = (uint)idx < (uint)stacks.Length ? stacks[idx] : 0;
+            if (owned >= needed) return;
+
+            SetSlotMissing(slot, true);
+            if (slot.StackText)
+            {
+                slot.StackText.text = $"{owned}/{needed}";
+                slot.StackText.gameObject.SetActive(true);
+            }
+        }
+
+        // dimmed icon under a faint hatch, built on first use
+        private static void SetSlotMissing(SlotView slot, bool missing)
+        {
+            // dark enough for the white count to read
+            slot.Icon.color = missing ? new Color(0.4f, 0.4f, 0.4f, 1f) : Color.white;
+
+            var hatch = slot.Icon.transform.Find("MissingHatch");
+            if (!hatch)
+            {
+                if (!missing) return;
+
+                var rt = CreateInternal("MissingHatch", slot.Icon.transform, typeof(Image));
+                rt.anchorMin = Vector2.zero;
+                rt.anchorMax = Vector2.one;
+                rt.offsetMin = Vector2.zero;
+                rt.offsetMax = Vector2.zero;
+
+                var img = rt.GetComponent<Image>();
+                img.sprite = GetHatchSprite();
+                img.type = Image.Type.Tiled;
+                img.pixelsPerUnitMultiplier = 5f;
+                img.color = new Color(1f, 1f, 1f, 0.2f);
+                img.raycastTarget = false;
+                hatch = rt;
+            }
+
+            hatch.gameObject.SetActive(missing);
+        }
+
+        internal SlotView AddSlot(PathRowRuntime row, GameObject template, AssetReferenceT<Sprite> iconRef, Sprite icon, int count)
+        {
+            if (template == null) return null;
             if (!_slotPools.TryGetValue(template, out var pool)) _slotPools[template] = pool = new Stack<SlotView>();
 
             SlotView slot;
@@ -237,6 +310,10 @@ namespace CookBook
                 slot.StackText.text = count > 1 ? count.ToString() : string.Empty;
                 slot.StackText.gameObject.SetActive(count > 1);
             }
+
+            // pooled slots can come back hatched
+            SetSlotMissing(slot, false);
+            return slot;
         }
 
         internal void ReleaseSlots(PathRowRuntime row)

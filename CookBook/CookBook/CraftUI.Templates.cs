@@ -121,6 +121,12 @@ namespace CookBook
             var view = rowGO.GetComponent<RecipeRowView>();
             view.RowTopButton.requiredTopLayer = _vanillaTopLayer;
 
+            if (_cutDown)
+            {
+                view.DepthText.gameObject.SetActive(false);
+                view.PathsText.gameObject.SetActive(false);
+            }
+
             var runtime = rowGO.AddComponent<RecipeRowRuntime>();
             runtime.View = view;
             runtime.CollapsedHeight = view.RowTransform.sizeDelta.y;

@@ -95,6 +95,8 @@ namespace CookBook
         private readonly List<DroneRequirement> _tempDroneReqList = new();
 
         internal event Action<List<CraftableEntry>, InventorySnapshot> OnCraftablesUpdated;
+        // the scoreboard viewer plans off the CHEF too
+        internal bool AnyStage;
 
         // ------------ Initialization ------------
         public CraftPlanner(int maxDepth, ManualLogSource log)
@@ -196,7 +198,7 @@ namespace CookBook
             {
                 canScrapDrones = snap.CanScrapDrones;
                 isPoolingEnabled = snap.IsPoolingEnabled;
-                if (!StateController.IsChefStage()) return;
+                if (!AnyStage && !StateController.IsChefStage()) return;
 
                 if (!forceUpdate && changedCount <= 0)
                 {
@@ -3013,12 +3015,21 @@ namespace CookBook
             public int TotalUpgradeCount;
             public int ScrapIndex;
         }
+        internal enum RecipeProgress { Craftable, Partial, None }
+
         internal class CraftableEntry
         {
             public int ResultIndex;
             public int ResultCount;
             public int MinDepth;
             public List<RecipeChain> Chains = new();
+
+            // scoreboard viewer only, planner entries stay Craftable
+            public RecipeProgress Progress;
+            public int Owned;
+            public int Needed;
+            public ChefRecipe ProgressRecipe;
+
             public bool IsItem => ResultIndex < ItemCatalog.itemCount;
             public ItemIndex ResultItem => IsItem ? (ItemIndex)ResultIndex : ItemIndex.None;
             public EquipmentIndex ResultEquipment => IsItem ? EquipmentIndex.None : (EquipmentIndex)(ResultIndex - ItemCatalog.itemCount);

@@ -18,6 +18,7 @@ namespace CookBook
         internal static bool _ischefstage = false;
 
         private static List<CraftPlanner.CraftableEntry> _newestCraftables = new List<CraftPlanner.CraftableEntry>();
+        internal static IReadOnlyList<CraftPlanner.CraftableEntry> NewestCraftables => _newestCraftables;
         private static GameObject _runnerGO;
         private static StateRunner _craftingHandler;
         private static Coroutine _throttleRoutine;

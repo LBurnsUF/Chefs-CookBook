@@ -1033,6 +1033,35 @@ namespace CookBook
 
         internal static InventorySnapshot GetSnapshot() => _snapshot;
 
+        // items only, for viewing any player's recipes off the CHEF
+        internal static InventorySnapshot BuildSnapshotFor(Inventory inv)
+        {
+            int totalLen = ItemCatalog.itemCount + EquipmentCatalog.equipmentCount;
+            int[] physical = GetUnifiedStacksFor(inv);
+
+            var corrupted = new HashSet<ItemIndex>();
+            foreach (var info in RoR2.Items.ContagiousItemManager.transformationInfos)
+            {
+                if (inv.GetItemCountPermanent(info.transformedItem) > 0) corrupted.Add(info.originalItem);
+            }
+            foreach (var itemIdx in corrupted) physical[(int)itemIdx] = 0;
+
+            return new InventorySnapshot(
+                physical,
+                Array.Empty<int>(),
+                null,
+                corrupted,
+                false,
+                false,
+                CookBook.DepthLimit,
+                RecipeProvider.GetFilteredRecipes(corrupted) ?? new List<ChefRecipe>(),
+                GenerateMask(physical, totalLen),
+                GenerateMask(null, totalLen),
+                null,
+                null
+            );
+        }
+
         private static int[] GetUnifiedStacksFor(Inventory inv)
         {
             int itemLen = ItemCatalog.itemCount;

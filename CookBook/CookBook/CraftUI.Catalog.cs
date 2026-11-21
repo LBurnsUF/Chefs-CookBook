@@ -10,6 +10,14 @@ namespace CookBook
     {
         // RoR2/Base/UI/texUIHatchingTile.png, the hud bar stripes
         private static readonly AssetReferenceT<Sprite> HatchingTileRef = new AssetReferenceT<Sprite>("5966ada566cc9ac4e88882edffcb4578");
+        private static Sprite _hatchSprite;
+
+        // a plain Image needs the sprite itself, not the async loader
+        internal static Sprite GetHatchSprite()
+        {
+            if (!_hatchSprite) _hatchSprite = Addressables.LoadAssetAsync<Sprite>(HatchingTileRef.RuntimeKey).WaitForCompletion();
+            return _hatchSprite;
+        }
 
         internal static string GetEntryDisplayName(CraftableEntry entry)
         {

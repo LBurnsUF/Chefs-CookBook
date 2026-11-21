@@ -27,6 +27,7 @@
 		<Compile Include="CraftUI.Lifecycle.cs" />
 		<Compile Include="CraftUI.Navigation.cs" />
 		<Compile Include="CraftUI.Populate.cs" />
+		<Compile Include="CraftUI.Scoreboard.cs" />
 		<Compile Include="CraftUI.State.cs" />
 		<Compile Include="CraftUI.Templates.cs" />
 		<Compile Include="CraftUI.Visual.cs" />
@@ -42,6 +43,7 @@
 		<Compile Include="RecipeFilter.cs" />
 		<Compile Include="RecipeProvider.cs" />
 		<Compile Include="RecipeTrackerUI.cs" />
+		<Compile Include="RecipeViewer.cs" />
 		<Compile Include="RegisterAssets.cs" />
 		<Compile Include="SettingsUI.cs" />
 		<Compile Include="StateController.cs" />

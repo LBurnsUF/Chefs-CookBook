@@ -1,5 +1,7 @@
+using RoR2.UI;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using static CookBook.CraftPlanner;
 
 namespace CookBook
@@ -119,6 +121,24 @@ namespace CookBook
     }
 
     internal sealed class CraftUIRunner : MonoBehaviour { }
+
+    // vanilla strip buttons ignore the mouse, catch the click here
+    internal sealed class ScoreboardStripHook : MonoBehaviour, IPointerClickHandler
+    {
+        internal ScoreboardStrip Strip;
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            if (eventData.button != PointerEventData.InputButton.Left) return;
+            CraftUI.Scoreboard.ToggleStrip(Strip);
+        }
+    }
+
+    // scoreboard closes when TAB is let go
+    internal sealed class ScoreboardCloseHook : MonoBehaviour
+    {
+        private void OnDisable() => CraftUI.Scoreboard.Collapse();
+    }
 
     internal class RecipeDropdownRuntime : MonoBehaviour
     {

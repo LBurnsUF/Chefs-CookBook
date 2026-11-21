@@ -52,6 +52,9 @@ namespace CookBook
 
         internal void OnPathSelected(PathRowRuntime clickedPath)
         {
+            // recipe rows only show what's missing
+            if (clickedPath.Chain == null) return;
+
             _currentHoveredPath = clickedPath;
             if (_selectedPathUI == clickedPath)
             {
@@ -136,6 +139,8 @@ namespace CookBook
 
             var view = runtime.View;
             int chainCount = runtime.Entry.Chains.Count;
+            // rows you can't make yet show their recipe
+            if (chainCount == 0 && runtime.Entry.ProgressRecipe != null) chainCount = 1;
 
             if (chainCount != 0)
             {

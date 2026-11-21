@@ -207,6 +207,8 @@ namespace CookBook
             var frame = System.Diagnostics.Stopwatch.StartNew();
             int used = 0;
 
+            if (owner.Entry.ProgressRecipe != null) BindProgressRow(contentRoot, used++, owner);
+
             foreach (var chain in owner.Entry.Chains)
             {
                 BindPathRow(contentRoot, used++, chain, owner);

@@ -30,6 +30,7 @@ namespace CookBook
         public static ConfigEntry<bool> ConsiderDrones;
         public static ConfigEntry<bool> PreventCorruptedCrafting;
         public static ConfigEntry<bool> ShowCorruptedResults;
+        public static ConfigEntry<bool> ShowMultistepPartials;
         internal static ConfigEntry<IndexSortMode> InternalSortOrder;
         internal static Dictionary<ItemTier, ConfigEntry<TierPriority>> TierPriorities = new();
 
@@ -61,6 +62,13 @@ namespace CookBook
                 "Show Corrupted Results",
                 true,
                 "Display corrupted versions of craft results if corrupt version already owned."
+            );
+
+            ShowMultistepPartials = Config.Bind(
+                "General",
+                "Show Multistep Partials",
+                false,
+                "Scoreboard viewer: also mark recipes partial when an ingredient is itself partial or craftable."
             );
 
             AllowMultiplayerPooling = Config.Bind(
@@ -147,6 +155,8 @@ namespace CookBook
             DialogueHooks.Init(Log); // Initialize Chef Dialogue Hooks
             ObjectiveTracker.Init();
             CraftUI.Crafting.Init(Log); // Initialize craft UI injection
+            RecipeViewer.Init(Log);
+            CraftUI.InitScoreboard();
             UIBundle.Init(Log, System.IO.Path.GetDirectoryName(Info.Location)); // Prefabs
 
             // VanillaCraftingTrace.Init(Log);
@@ -242,6 +252,7 @@ namespace CookBook
             StateController.Shutdown();
             DialogueHooks.Shutdown();
             CraftUI.Crafting.Shutdown();
+            CraftUI.ShutdownScoreboard();
             UIBundle.Shutdown();
             ObjectiveTracker.Shutdown();
             ChatNetworkHandler.ShutDown();

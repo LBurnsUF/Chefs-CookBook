@@ -22,6 +22,7 @@ namespace CookBook
 
             ModSettingsManager.AddOption(new KeyBindOption(CookBook.AbortKey));
             ModSettingsManager.AddOption(new CheckBoxOption(CookBook.ShowCorruptedResults));
+            ModSettingsManager.AddOption(new CheckBoxOption(CookBook.ShowMultistepPartials));
 
             ModSettingsManager.AddOption(new CheckBoxOption(CookBook.AllowMultiplayerPooling));
             ModSettingsManager.AddOption(new CheckBoxOption(CookBook.ConsiderDrones));
