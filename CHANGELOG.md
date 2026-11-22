@@ -3,6 +3,24 @@ Dates are listed in `MM/DD/YY` format.
 
 ---
 
+## v1.4.0 - 11/22/26
+### Added
+- Recipe list under each player in the TAB scoreboard.
+- Pin recipes to objectives from the TAB list.
+- Ask allies to craft from their TAB list.
+- Show Multistep Partials setting.
+### Fixed
+- Chains through freshly crafted ingredients getting culled.
+- Panel not clearing when nothing is craftable.
+- Selected path lost on list refresh.
+### Changed
+- Panel opens instantly, kept between opens.
+- First craft now completed with the already open menu.
+- Final craft result left on the ground.
+- UI built from prefabs.
+
+---
+
 ## v1.3.4 - 11/16/26
 ### Added
 - Repeat count stepper.

@@ -220,13 +220,6 @@ namespace CookBook
             _pinButton.Button.onClick.AddListener(OnPinClicked);
             _pinButton.Button.gameObject.SetActive(false);
 
-            // whole rows only, it settles on row tops instead of drifting
-            var scroll = _recipeListContent.GetComponentInParent<ScrollRect>();
-            scroll.inertia = false;
-            var snap = scroll.gameObject.AddComponent<RowSnapScroll>();
-            snap.Scroll = scroll;
-            snap.PadTop = _recipeListContent.GetComponent<VerticalLayoutGroup>().padding.top;
-
             // no crafting here, the list takes the footer's room
             var view = _cookbookRoot.GetComponentInChildren<PanelView>(true);
             view.CraftSlot.parent.gameObject.SetActive(false);

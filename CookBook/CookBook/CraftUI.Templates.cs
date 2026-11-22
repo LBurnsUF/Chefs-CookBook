@@ -44,6 +44,13 @@ namespace CookBook
         {
             _recipeListContent = view.ListContent;
 
+            // whole rows only, it settles on row tops instead of drifting
+            var scroll = _recipeListContent.GetComponentInParent<ScrollRect>();
+            scroll.inertia = false;
+            var snap = scroll.gameObject.AddComponent<RowSnapScroll>();
+            snap.Scroll = scroll;
+            snap.PadTop = _recipeListContent.GetComponent<VerticalLayoutGroup>().padding.top;
+
             _searchInputField = view.SearchInput;
             _searchInputField.onValueChanged.AddListener(_ => RefreshUIVisibility());
 

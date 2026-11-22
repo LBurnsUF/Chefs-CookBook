@@ -27,7 +27,7 @@ Panel                       stretched over the CookBook root, PanelView
 │  ├─ MinusSlot             32 wide, 2 left of RepeatInput
 │  └─ CraftSlot             the rest, 2 left of MinusSlot
 └─ RecipeListContainer      ScrollRect, ScrollFollowSelection
-   │                        top stretch, 502 tall, 70 below the top
+   │                        top stretch, 498 tall (7 rows + padding), 70 below the top
    └─ Viewport              RectMask2D, Image (clear, no raycast), stretched
       └─ Content            VerticalLayoutGroup, ContentSizeFitter (vertical preferred), CanvasGroup
                             top stretch, pivot top

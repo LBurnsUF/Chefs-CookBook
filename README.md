@@ -28,6 +28,12 @@ Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook 
 - Support for repeatedly executing a specific craft chain N times in a single automated sequence
 - Automatically calculates and displays the "Max Affordable" repetitions for any selected path, physically clamping user input to current inventory limits
 - Event system to prompt other mod users if someone is requesting their assistance in a recipe!
+### Scoreboard
+- Click a player in the TAB scoreboard to see what they can craft, partial and missing recipes included
+- Expand a recipe to see which ingredients are missing
+- Pin your own recipes to objectives, or ask an ally to craft one of theirs
+- Pauses in singleplayer while open
+![Scoreboard Viewer](https://raw.githubusercontent.com/LBurnsUF/Chefs-CookBook/refs/heads/master/images/Scoreboard.png)
 ### Backend
 - Robust against other mods
 - Highly encapsulated, doesn't touch any external logic
@@ -46,6 +52,8 @@ Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook 
 - Expand a recipe row, select the path you want, then select **craft**
 	- The *Objectives* panel will be updated to visualize the status of the craft chain
 	- Hold *left alt* to cancel an in progress craft
+- Hold TAB and click a player to open their recipe list, it stays open until TAB is pressed again
+- Hover a recipe and press **Pin** to track it in *Objectives*, or **Ask** on an ally's list
 
 
 ## Technical Overview
@@ -72,8 +80,6 @@ Will continue in the interim between semesters in a few weeks!
 Planned features include:
 
 - Visual polish and UI refinements for UI frontend (this is my first mod, and Unity UI is painful)
-- In-Progress run recipe tracking
-	- An in-progress view to view all recipes and their completion status, accessed by holding tab (inspectable so that the game can be paused while reading)
 
 ---
 
