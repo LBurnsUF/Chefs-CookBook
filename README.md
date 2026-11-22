@@ -4,7 +4,7 @@
 
 Instead of mentally tracking multi-step recipes or juggling Wiki tabs, CookBook presents crafting information **in-game** with a clean, scalable UI designed for large inventories and complex recipe graphs.
 
-![CookBook Overview](https://raw.githubusercontent.com/LBurnsUF/Chefs-CookBook/refs/heads/master/images/UI.png)
+![CookBook Overview](https://raw.githubusercontent.com/LBurnsUF/Chefs-CookBook/refs/heads/master/images/UI.png?v=1.4.0)
 
 ## Feedback and Issues
 
