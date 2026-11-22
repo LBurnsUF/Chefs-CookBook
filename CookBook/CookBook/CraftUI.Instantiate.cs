@@ -167,6 +167,7 @@ namespace CookBook
         {
             if (!runtime || !runtime.View.RowTop) return;
             if (lit) AttachReticleTo(runtime.View.RowTop);
+            if (lit && _cutDown) AttachPinButton(runtime);
             else if (IsReticleAttachedTo(runtime.View.RowTop))
             {
                 if (_selectedAnchor) AttachReticleTo(_selectedAnchor);

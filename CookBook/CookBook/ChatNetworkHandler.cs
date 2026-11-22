@@ -53,10 +53,10 @@ namespace CookBook
 
             _pendingAcks[target.netId.Value] = UnityEngine.Time.time;
             RoR2Application.instance.StopCoroutine(nameof(CheckAckTimeout));
-            RoR2Application.instance.StartCoroutine(CheckAckTimeout(target, unifiedIdx, quantity));
+            RoR2Application.instance.StartCoroutine(CheckAckTimeout(target, command, unifiedIdx, quantity));
         }
 
-        private static System.Collections.IEnumerator CheckAckTimeout(NetworkUser target, int idx, int qty)
+        private static System.Collections.IEnumerator CheckAckTimeout(NetworkUser target, string command, int idx, int qty)
         {
             yield return new UnityEngine.WaitForSeconds(AckTimeout);
 
@@ -65,11 +65,11 @@ namespace CookBook
                 _pendingAcks.Remove(target.netId.Value);
 
                 DebugLog.Trace(_log, $"[Net] No ACK from {target.userName}. Falling back to raw text.");
-                SendRawTextFallback(target, idx, qty);
+                SendRawTextFallback(target, command, idx, qty);
             }
         }
 
-        private static void SendRawTextFallback(NetworkUser target, int unifiedIdx, int qty)
+        private static void SendRawTextFallback(NetworkUser target, string command, int unifiedIdx, int qty)
         {
             var localUser = LocalUserManager.GetFirstLocalUser()?.currentNetworkUser;
             if (!localUser || target == null) return;
@@ -104,7 +104,9 @@ namespace CookBook
                 }
             }
 
-            string message = $"<color=#d299ff>[CookBook]</color> @{target.userName}, I'm looking for ({qty}) <color=#{colorTag}>{itemName}</color>!";
+            string message = command == "CRAFT"
+                ? $"<color=#d299ff>[CookBook]</color> @{target.userName}, could you craft <color=#{colorTag}>{itemName}</color>?"
+                : $"<color=#d299ff>[CookBook]</color> @{target.userName}, I'm looking for ({qty}) <color=#{colorTag}>{itemName}</color>!";
 
             Chat.SendBroadcastChat(new Chat.SimpleChatMessage
             {

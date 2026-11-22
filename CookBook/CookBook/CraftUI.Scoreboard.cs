@@ -17,6 +17,7 @@ namespace CookBook
 
         private const float ListBottomMargin = 10f; // panel prefab bottom padding
         private const float RefreshDelay = 1f; // seconds after the last pickup
+        private const float SearchGap = 8f; // between search and ALL
 
         internal bool _cutDown;
         private ScoreboardStrip _expandedStrip;
@@ -25,6 +26,8 @@ namespace CookBook
         private RectTransform _spacer;
         private Coroutine _refreshRoutine;
         private bool _paused;
+        private ButtonParts _pinButton;
+        private RecipeRowRuntime _pinRow;
 
         internal static void InitScoreboard()
         {
@@ -107,7 +110,7 @@ namespace CookBook
             {
                 if (child.gameObject.activeSelf) used += LayoutUtility.GetPreferredHeight(child);
             }
-            float height = RoundToEven(container.rect.height - used);
+            float height = FitRows(RoundToEven(container.rect.height - used));
 
             // pushes the strips below down, the panel sits over it
             if (!_spacer) _spacer = CreateInternal("CookBookSpacer", strip.transform.parent, typeof(RectTransform));
@@ -212,6 +215,18 @@ namespace CookBook
 
             AcquireTemplates(_wokPanel, cbRT);
 
+            // one pin button, it moves to the open row
+            _pinButton = CreateCanonButton("PinButton", cbRT, "Pin");
+            _pinButton.Button.onClick.AddListener(OnPinClicked);
+            _pinButton.Button.gameObject.SetActive(false);
+
+            // whole rows only, it settles on row tops instead of drifting
+            var scroll = _recipeListContent.GetComponentInParent<ScrollRect>();
+            scroll.inertia = false;
+            var snap = scroll.gameObject.AddComponent<RowSnapScroll>();
+            snap.Scroll = scroll;
+            snap.PadTop = _recipeListContent.GetComponent<VerticalLayoutGroup>().padding.top;
+
             // no crafting here, the list takes the footer's room
             var view = _cookbookRoot.GetComponentInChildren<PanelView>(true);
             view.CraftSlot.parent.gameObject.SetActive(false);
@@ -229,6 +244,11 @@ namespace CookBook
                 searchBg.type = slotBg.type;
                 searchBg.color = slotBg.color;
             }
+
+            // search runs up to ALL, no gap between them
+            var searchRT = (RectTransform)view.SearchInput.transform;
+            searchRT.anchorMax = new Vector2(view.CategorySlot.anchorMin.x, searchRT.anchorMax.y);
+            searchRT.offsetMax = new Vector2(-SearchGap, searchRT.offsetMax.y);
 
             // inside the backdrop's border, same padding as the strip's contents
             var stripPad = stripBgTr ? stripBgTr.GetComponent<HorizontalLayoutGroup>() : null;
@@ -276,6 +296,57 @@ namespace CookBook
             _cookbookRoot.GetComponent<Canvas>().enabled = shown;
             _cookbookRoot.GetComponent<GraphicRaycaster>().enabled = shown;
             foreach (var ev in _cookbookRoot.GetComponents<HGGamepadInputEvent>()) ev.enabled = shown;
+        }
+
+        // whole rows only, the leftover goes back to the scoreboard
+        private float FitRows(float height)
+        {
+            var listRT = (RectTransform)_recipeListContent.GetComponentInParent<ScrollRect>().transform;
+            var pad = _recipeListContent.GetComponent<VerticalLayoutGroup>().padding;
+            float rowHeight = _recipeRowTemplate.GetComponent<RecipeRowRuntime>().CollapsedHeight;
+
+            float listTop = -listRT.anchoredPosition.y;
+            int rows = Mathf.Max(1, Mathf.FloorToInt((height - listTop - ListBottomMargin - pad.vertical) / rowHeight));
+            return listTop + rows * rowHeight + pad.vertical + ListBottomMargin;
+        }
+
+        private bool ViewingSelf => _filledMaster && _filledMaster == LocalUserManager.GetFirstLocalUser()?.cachedMaster;
+
+        // rides the hovered row, top of the meta column
+        private void AttachPinButton(RecipeRowRuntime runtime)
+        {
+            if (!_pinButton.Button) return;
+            _pinRow = runtime;
+
+            var rt = (RectTransform)_pinButton.Button.transform;
+            rt.SetParent(runtime.View.DepthText.transform.parent, false);
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.offsetMin = new Vector2(0f, 2f);
+            rt.offsetMax = new Vector2(0f, -2f);
+
+            _pinButton.Label.text = ViewingSelf ? (ObjectiveTracker.IsPinned(runtime.Entry.ResultIndex) ? "Unpin" : "Pin") : "Ask";
+            rt.gameObject.SetActive(true);
+        }
+
+        // your pins go to objectives, an ally's become a request to them
+        private void OnPinClicked()
+        {
+            var entry = _pinRow ? _pinRow.Entry : null;
+            if (entry == null || !_filledMaster) return;
+
+            if (ViewingSelf)
+            {
+                ObjectiveTracker.TogglePin(entry);
+                _pinButton.Label.text = ObjectiveTracker.IsPinned(entry.ResultIndex) ? "Unpin" : "Pin";
+                return;
+            }
+
+            var target = _filledMaster.playerCharacterMasterController ? _filledMaster.playerCharacterMasterController.networkUser : null;
+            if (!target) return;
+
+            ChatNetworkHandler.SendObjectiveRequest(target, "CRAFT", entry.ResultIndex, 1);
+            _pinButton.Label.text = "Asked";
         }
 
         // solo only, a shared run keeps going

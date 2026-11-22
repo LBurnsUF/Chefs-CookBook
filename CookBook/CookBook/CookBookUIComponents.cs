@@ -2,6 +2,7 @@ using RoR2.UI;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using static CookBook.CraftPlanner;
 
 namespace CookBook
@@ -138,6 +139,40 @@ namespace CookBook
     internal sealed class ScoreboardCloseHook : MonoBehaviour
     {
         private void OnDisable() => CraftUI.Scoreboard.Collapse();
+    }
+
+    // settles the list on row tops so only whole rows show, moved by wheel, nav or refresh
+    internal sealed class RowSnapScroll : MonoBehaviour
+    {
+        internal ScrollRect Scroll;
+        internal float PadTop;
+        private float _settled;
+
+        private void LateUpdate()
+        {
+            var content = Scroll.content;
+            float pos = content.anchoredPosition.y;
+            if (Mathf.Abs(pos - _settled) < 0.5f) return;
+
+            bool down = pos > _settled;
+            float max = Mathf.Max(0f, content.rect.height - Scroll.viewport.rect.height);
+            float target = down ? max : 0f;
+
+            // nearest row top at or past where it moved to
+            foreach (RectTransform row in content)
+            {
+                if (!row.gameObject.activeSelf) continue;
+
+                float top = -(row.localPosition.y + row.rect.yMax) - PadTop;
+                if (down && top > _settled + 0.5f && top >= pos - 0.5f && top < target) target = top;
+                if (!down && top < _settled - 0.5f && top <= pos + 0.5f && top > target) target = top;
+            }
+
+            target = Mathf.Clamp(target, 0f, max);
+            Scroll.StopMovement();
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, target);
+            _settled = target;
+        }
     }
 
     // keeps the scoreboard list over its spacer as the scoreboard lays out

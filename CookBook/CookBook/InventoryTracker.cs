@@ -1062,7 +1062,7 @@ namespace CookBook
             );
         }
 
-        private static int[] GetUnifiedStacksFor(Inventory inv)
+        internal static int[] GetUnifiedStacksFor(Inventory inv)
         {
             int itemLen = ItemCatalog.itemCount;
             int totalLen = itemLen + EquipmentCatalog.equipmentCount;
