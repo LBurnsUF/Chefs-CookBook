@@ -1,4 +1,5 @@
 ﻿using RoR2;
+using RoR2.UI;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
@@ -72,6 +73,46 @@ namespace CookBook
             direct = sprite;
             reference = direct == null && address != null && address.RuntimeKeyIsValid() ? address : null;
             return direct != null || reference != null;
+        }
+
+        // same title, body and colors an inventory icon shows, nothing for -1
+        internal static void SetSlotTooltip(SlotView slot, int unifiedIdx)
+        {
+            var tip = slot ? slot.GetComponent<TooltipProvider>() : null;
+            if (!tip) return;
+
+            tip.titleColor = Color.clear;
+            if (unifiedIdx < 0) return;
+
+            if (unifiedIdx < ItemCatalog.itemCount)
+            {
+                var def = ItemCatalog.GetItemDef((ItemIndex)unifiedIdx);
+                if (!def) return;
+                tip.titleToken = def.nameToken;
+                tip.bodyToken = def.pickupToken;
+                tip.titleColor = ColorCatalog.GetColor(def.darkColorIndex);
+                tip.bodyColor = new Color(0.6f, 0.6f, 0.6f, 1f);
+                return;
+            }
+
+            var eq = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)(unifiedIdx - ItemCatalog.itemCount));
+            if (!eq) return;
+            tip.titleToken = eq.nameToken;
+            tip.bodyToken = eq.pickupToken;
+            tip.titleColor = ColorCatalog.GetColor(eq.colorIndex);
+            tip.bodyColor = Color.gray;
+        }
+
+        internal static void SetDroneTooltip(SlotView slot, DroneIndex droneIdx)
+        {
+            var tip = slot ? slot.GetComponent<TooltipProvider>() : null;
+            var def = DroneCatalog.GetDroneDef(droneIdx);
+            if (!tip) return;
+
+            tip.titleColor = def ? ColorCatalog.GetColor(def.color) : Color.clear;
+            tip.titleToken = def ? def.nameToken : null;
+            tip.bodyToken = def ? def.pickupToken : null;
+            tip.bodyColor = Color.gray;
         }
 
         internal static Color GetEntryColor(CraftableEntry entry)

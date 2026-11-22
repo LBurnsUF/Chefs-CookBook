@@ -9,7 +9,7 @@ namespace CookBook
 {
     internal sealed partial class CraftUI
     {
-        private static readonly List<Selectable> _navOrder = new();
+        private readonly List<Selectable> _navOrder = new();
 
         // =================== Gamepad Navigation ========================
         internal void InstallGamepadBindings(GameObject root)
@@ -38,6 +38,12 @@ namespace CookBook
 
         internal void FocusVanilla()
         {
+            // the scoreboard list goes back to its strip
+            if (_cutDown)
+            {
+                if (_expandedStrip) SelectForGamepad(_expandedStrip.GetComponent<Selectable>());
+                return;
+            }
             if (!_craftingPanel) return;
             Selectable target = null;
             if (_craftingPanel.inventoryContainer)

@@ -61,6 +61,7 @@ namespace CookBook
         internal System.Reflection.MethodInfo _onIngredientsChangedMethod;
 
         internal RecipeRowRuntime _openRow;
+        internal RecipeFilter.RecipeFilterCategory _category;
         internal CraftUIRunner _runner;
 
         internal RecipeDropdownRuntime _sharedDropdown;

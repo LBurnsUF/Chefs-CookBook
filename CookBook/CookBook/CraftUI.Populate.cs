@@ -119,7 +119,7 @@ namespace CookBook
             }
 
             // reused rows keep old filter state
-            RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField ? _searchInputField.text : null);
+            RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField ? _searchInputField.text : null, _category);
             RefreshEmptyRow();
 
             LayoutRebuilder.ForceRebuildLayoutImmediate(_recipeListContent);

@@ -3,6 +3,7 @@ using RoR2.UI;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
+using UnityEngine.Events;
 using UnityEngine.UI;
 
 namespace CookBook
@@ -48,9 +49,15 @@ namespace CookBook
         // strips are pooled, hook each once
         private static void OnScoreboardOpen()
         {
-            var controller = Object.FindObjectOfType<ScoreboardController>();
+            // CookBook serves the first local player, splitscreen others keep vanilla
+            var hud = GetFirstUserHud();
+            var controller = hud && hud.scoreboardPanel ? hud.scoreboardPanel.GetComponent<ScoreboardController>() : null;
             if (!controller) return;
-            if (!controller.GetComponent<ScoreboardCloseHook>()) controller.gameObject.AddComponent<ScoreboardCloseHook>();
+            if (!controller.GetComponent<ScoreboardCloseHook>())
+            {
+                controller.gameObject.AddComponent<ScoreboardCloseHook>();
+                InstallStripGamepad(controller);
+            }
 
             foreach (var strip in controller.container.GetComponentsInChildren<ScoreboardStrip>(true))
             {
@@ -58,13 +65,36 @@ namespace CookBook
                 strip.gameObject.AddComponent<ScoreboardStripHook>().Strip = strip;
             }
 
-            Scoreboard.Prefetch(controller.GetComponentInParent<HUD>());
+            Scoreboard.Prefetch(hud);
+        }
+
+        // RB on a strip opens its list, same button that moves into CookBook at the CHEF
+        private static void InstallStripGamepad(ScoreboardController controller)
+        {
+            var ev = controller.gameObject.AddComponent<HGGamepadInputEvent>();
+            ev.actionName = "UITabRight";
+            ev.actionEvent = new UnityEvent();
+            ev.actionEvent.AddListener(() => Scoreboard.OpenSelectedStrip(controller));
+            ev.enabledObjectsIfActive = System.Array.Empty<GameObject>();
+            ev.requiredTopLayer = controller.GetComponent<UILayerKey>();
+        }
+
+        // the strip the gamepad is on, its list opens and takes focus
+        private void OpenSelectedStrip(ScoreboardController controller)
+        {
+            var es = controller.GetComponent<MPEventSystemLocator>().eventSystem;
+            var selected = es ? es.currentSelectedGameObject : null;
+            var strip = selected ? selected.GetComponentInParent<ScoreboardStrip>() : null;
+            if (!strip || strip == _expandedStrip) return;
+
+            ToggleStrip(strip);
+            if (_expandedStrip == strip) FocusCookBook();
         }
 
         // built with the HUD and kept filled with your list, TAB only shows it
         private void Prefetch(HUD hud)
         {
-            if (!EnsureBuilt(hud) || _expandedStrip != null) return;
+            if (hud != GetFirstUserHud() || !EnsureBuilt(hud) || _expandedStrip != null) return;
 
             var local = LocalUserManager.GetFirstLocalUser()?.cachedMaster;
             if (local && local != _filledMaster) Fill(local);
@@ -255,6 +285,9 @@ namespace CookBook
             // same layer the strip buttons answer to
             _vanillaTopLayer = hud.scoreboardPanel.GetComponent<UILayerKey>();
             BindTopLayer(_vanillaTopLayer, true);
+
+            // X pins the row the gamepad is on
+            AddGamepadAction(_cookbookRoot, "UISubmitAlt", OnPinClicked);
         }
 
         // over the spacer, at the space left
@@ -301,6 +334,13 @@ namespace CookBook
             float listTop = -listRT.anchoredPosition.y;
             int rows = Mathf.Max(1, Mathf.FloorToInt((height - listTop - ListBottomMargin - pad.vertical) / rowHeight));
             return listTop + rows * rowHeight + pad.vertical + ListBottomMargin;
+        }
+
+        private static HUD GetFirstUserHud()
+        {
+            var user = LocalUserManager.GetFirstLocalUser();
+            foreach (var hud in HUD.readOnlyInstanceList) if (hud.localUserViewer == user) return hud;
+            return null;
         }
 
         private bool ViewingSelf => _filledMaster && _filledMaster == LocalUserManager.GetFirstLocalUser()?.cachedMaster;

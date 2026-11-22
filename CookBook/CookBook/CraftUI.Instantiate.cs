@@ -79,6 +79,8 @@ namespace CookBook
                 view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.1f);
             }
 
+            SetSlotTooltip(view.ResultSlot, entry.ResultIndex);
+
             // ---------------- Progress ----------------
             // further from done reads dimmer
             if (entry.ProgressRecipe != null)
@@ -156,6 +158,7 @@ namespace CookBook
             view.ResultSlot.Icon.pixelsPerUnitMultiplier = 5f;
             view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.3f);
             view.ResultSlot.IconLoader.SetAssetOrDirectReference(HatchingTileRef, null);
+            SetSlotTooltip(view.ResultSlot, -1);
             if (view.ResultSlot.StackText != null) view.ResultSlot.StackText.gameObject.SetActive(false);
 
             if (view.DropdownLayoutElement != null) view.DropdownLayoutElement.preferredHeight = 0f;
@@ -188,7 +191,7 @@ namespace CookBook
             {
                 foreach (var ingredient in chain.PhysicalCostSparse)
                 {
-                    if (TryGetIcon(ingredient.UnifiedIndex, out var iconRef, out var icon)) AddSlot(runtime, _ingredientSlotTemplate, iconRef, icon, ingredient.Count);
+                    if (TryGetIcon(ingredient.UnifiedIndex, out var iconRef, out var icon)) SetSlotTooltip(AddSlot(runtime, _ingredientSlotTemplate, iconRef, icon, ingredient.Count), ingredient.UnifiedIndex);
                 }
             }
 
@@ -196,7 +199,7 @@ namespace CookBook
             {
                 foreach (var trade in chain.AlliedTradeSparse)
                 {
-                    if (TryGetIcon(trade.UnifiedIndex, out var iconRef, out var icon)) AddSlot(runtime, _tradeSlotTemplate, iconRef, icon, trade.TradesRequired);
+                    if (TryGetIcon(trade.UnifiedIndex, out var iconRef, out var icon)) SetSlotTooltip(AddSlot(runtime, _tradeSlotTemplate, iconRef, icon, trade.TradesRequired), trade.UnifiedIndex);
                 }
             }
 
@@ -213,7 +216,7 @@ namespace CookBook
                             bool isAlliedDrone = requirement.Owner != null && requirement.Owner != localUser;
                             GameObject template = isAlliedDrone ? _tradeSlotTemplate : _droneSlotTemplate;
 
-                            AddSlot(runtime, template, droneRef, droneSprite, requirement.Count);
+                            SetDroneTooltip(AddSlot(runtime, template, droneRef, droneSprite, requirement.Count), requirement.DroneIdx);
                         }
                     }
                 }
@@ -262,6 +265,7 @@ namespace CookBook
 
             var slot = AddSlot(row, _ingredientSlotTemplate, iconRef, icon, needed);
             if (slot == null) return;
+            SetSlotTooltip(slot, idx);
 
             int owned = (uint)idx < (uint)stacks.Length ? stacks[idx] : 0;
             if (owned >= needed) return;

@@ -6,7 +6,6 @@ using static CookBook.CraftPlanner;
 internal static class RecipeFilter
 {
     public enum RecipeFilterCategory { All, Damage, Healing, Utility }
-    public static RecipeFilterCategory CurrentCategory = RecipeFilterCategory.All;
 
     private static readonly Dictionary<RecipeFilterCategory, ItemTag> CategoryToTag = new()
     {
@@ -15,7 +14,7 @@ internal static class RecipeFilter
         { RecipeFilterCategory.Utility, ItemTag.Utility }
     };
 
-    public static void ApplyFiltersToUI(List<CraftUI.RecipeRowUI> rows, string searchTerm)
+    public static void ApplyFiltersToUI(List<CraftUI.RecipeRowUI> rows, string searchTerm, RecipeFilterCategory category)
     {
         if (rows == null) return;
 
@@ -26,22 +25,21 @@ internal static class RecipeFilter
             if (row.RowGO == null) continue;
 
             bool searchMatch = string.IsNullOrEmpty(term) || EntryMatchesSearch(row.Entry, term);
-            bool filterMatch = EntryMatchesFilter(row.Entry);
+            bool filterMatch = EntryMatchesFilter(row.Entry, category);
 
             row.RowGO.SetActive(searchMatch && filterMatch);
         }
     }
 
-    public static void CycleCategory()
+    public static RecipeFilterCategory Next(RecipeFilterCategory category)
     {
-        int next = (int)CurrentCategory + 1;
-        if (next > (int)RecipeFilterCategory.Utility) next = 0;
-        CurrentCategory = (RecipeFilterCategory)next;
+        int next = (int)category + 1;
+        return next > (int)RecipeFilterCategory.Utility ? RecipeFilterCategory.All : (RecipeFilterCategory)next;
     }
 
-    public static string GetLabel()
+    public static string GetLabel(RecipeFilterCategory category)
     {
-        return CurrentCategory switch
+        return category switch
         {
             RecipeFilterCategory.Damage => "<size=150%><sprite name=\"icon\"></size> DMG",
             RecipeFilterCategory.Healing => "<size=150%><sprite name=\"icon\"></size> HEAL",
@@ -50,10 +48,10 @@ internal static class RecipeFilter
         };
     }
 
-    private static bool EntryMatchesFilter(CraftableEntry entry)
+    private static bool EntryMatchesFilter(CraftableEntry entry, RecipeFilterCategory category)
     {
         if (entry == null) return false;
-        if (CurrentCategory == RecipeFilterCategory.All) return true;
+        if (category == RecipeFilterCategory.All) return true;
 
         int idx = entry.ResultIndex;
         if (idx < 0) return false;
@@ -61,7 +59,7 @@ internal static class RecipeFilter
         if (idx >= ItemCatalog.itemCount) return true;
 
         ItemDef def = ItemCatalog.GetItemDef((ItemIndex)idx);
-        return def != null && def.ContainsTag(CategoryToTag[CurrentCategory]);
+        return def != null && def.ContainsTag(CategoryToTag[category]);
     }
 
     private static bool EntryMatchesSearch(CraftableEntry entry, string term)

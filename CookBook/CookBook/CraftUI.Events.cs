@@ -243,11 +243,11 @@ namespace CookBook
 
 
         // Filtering logic
-        public static void UpdateCycleButtonVisuals(TextMeshProUGUI label)
+        public void UpdateCycleButtonVisuals(TextMeshProUGUI label)
         {
             if (!label) return;
 
-            label.spriteAsset = RecipeFilter.CurrentCategory switch
+            label.spriteAsset = _category switch
             {
                 RecipeFilter.RecipeFilterCategory.Damage => RegisterAssets.CombatIconAsset,
                 RecipeFilter.RecipeFilterCategory.Healing => RegisterAssets.HealingIconAsset,
@@ -255,7 +255,7 @@ namespace CookBook
                 _ => null
             };
 
-            label.color = RecipeFilter.CurrentCategory switch
+            label.color = _category switch
             {
                 RecipeFilter.RecipeFilterCategory.Damage => new Color32(255, 75, 50, 255),
                 RecipeFilter.RecipeFilterCategory.Healing => new Color32(119, 255, 117, 255),
@@ -263,13 +263,13 @@ namespace CookBook
                 _ => Color.white
             };
 
-            label.text = RecipeFilter.GetLabel();
+            label.text = RecipeFilter.GetLabel(_category);
             label.ForceMeshUpdate();
         }
 
         internal void RefreshUIVisibility()
         {
-            RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField?.text);
+            RecipeFilter.ApplyFiltersToUI(_recipeRowUIs, _searchInputField?.text, _category);
             RefreshEmptyRow();
             RebuildNavigation();
 

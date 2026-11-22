@@ -77,7 +77,7 @@ namespace CookBook
 
             cycle.Button.onClick.AddListener(() =>
             {
-                RecipeFilter.CycleCategory();
+                _category = RecipeFilter.Next(_category);
                 UpdateCycleButtonVisuals(labelTMP);
                 RefreshUIVisibility();
             });
@@ -119,6 +119,7 @@ namespace CookBook
             _recipeRowTemplate = InstantiateBundleTemplate("RecipeRow");
             // the nested slot comes from the prefab, so it still needs the vanilla outlines
             AddResultOutlines(_craftingPanel, _recipeRowTemplate.GetComponent<RecipeRowView>().ResultSlot.transform);
+            AddSlotTooltip(_recipeRowTemplate.GetComponent<RecipeRowView>().ResultSlot);
             BindRecipeRowTemplate(_recipeRowTemplate);
         }
 
@@ -211,6 +212,17 @@ namespace CookBook
             _ingredientSlotTemplate = InstantiateBundleTemplate("PhysicalSlot");
             _droneSlotTemplate = InstantiateBundleTemplate("DroneSlot");
             _tradeSlotTemplate = InstantiateBundleTemplate("TradeSlot");
+
+            AddSlotTooltip(_ingredientSlotTemplate.GetComponent<SlotView>());
+            AddSlotTooltip(_droneSlotTemplate.GetComponent<SlotView>());
+            AddSlotTooltip(_tradeSlotTemplate.GetComponent<SlotView>());
+        }
+
+        // vanilla's hover card, the icon has to catch the pointer for it
+        private static void AddSlotTooltip(SlotView slot)
+        {
+            slot.gameObject.AddComponent<TooltipProvider>();
+            slot.Icon.raycastTarget = true;
         }
 
         // inactive holder for pooled dropdown slots

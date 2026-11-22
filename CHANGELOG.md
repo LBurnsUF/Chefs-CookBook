@@ -9,6 +9,8 @@ Dates are listed in `MM/DD/YY` format.
 - Pin recipes to objectives from the TAB list.
 - Ask allies to craft from their TAB list.
 - Show Multistep Partials setting.
+- Item hover cards on recipe icons.
+- TAB list controller support (tentative, untested, report issues on [GitHub](https://github.com/LBurnsUF/Chefs-CookBook/issues)).
 ### Fixed
 - Chains through freshly crafted ingredients getting culled.
 - Panel not clearing when nothing is craftable.
