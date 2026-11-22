@@ -140,6 +140,30 @@ namespace CookBook
         private void OnDisable() => CraftUI.Scoreboard.Collapse();
     }
 
+    // keeps the scoreboard list over its spacer as the scoreboard lays out
+    internal sealed class ScoreboardPanelFollow : MonoBehaviour
+    {
+        internal RectTransform Target;
+        private readonly Vector3[] _corners = new Vector3[4];
+
+        private void LateUpdate() => Sync();
+
+        internal void Sync()
+        {
+            if (!Target || !Target.gameObject.activeInHierarchy) return;
+
+            var rt = (RectTransform)transform;
+            var parent = (RectTransform)rt.parent;
+            Target.GetWorldCorners(_corners);
+            Vector3 min = parent.InverseTransformPoint(_corners[0]);
+            Vector3 max = parent.InverseTransformPoint(_corners[2]);
+
+            // the scoreboard sits deeper under the perspective camera, match its depth or it draws bigger
+            rt.anchoredPosition3D = new Vector3(min.x - parent.rect.center.x, min.y - parent.rect.center.y, min.z);
+            rt.sizeDelta = (Vector2)(max - min);
+        }
+    }
+
     internal class RecipeDropdownRuntime : MonoBehaviour
     {
         internal CraftUI Panel;

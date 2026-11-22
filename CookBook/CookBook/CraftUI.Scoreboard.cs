@@ -1,5 +1,6 @@
 ﻿using RoR2;
 using RoR2.UI;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
@@ -15,20 +16,28 @@ namespace CookBook
         private static CraftingPanel _wokPanel;
 
         private const float ListBottomMargin = 10f; // panel prefab bottom padding
+        private const float RefreshDelay = 1f; // seconds after the last pickup
 
         internal bool _cutDown;
         private ScoreboardStrip _expandedStrip;
+        private CharacterMaster _filledMaster;
         private GameObject _inspectPanel;
+        private RectTransform _spacer;
+        private Coroutine _refreshRoutine;
         private bool _paused;
 
         internal static void InitScoreboard()
         {
             ScoreboardController.onScoreboardOpen += OnScoreboardOpen;
+            HUD.onHudTargetChangedGlobal += Scoreboard.Prefetch;
+            Inventory.onInventoryChangedGlobal += Scoreboard.OnInventoryChanged;
         }
 
         internal static void ShutdownScoreboard()
         {
             ScoreboardController.onScoreboardOpen -= OnScoreboardOpen;
+            HUD.onHudTargetChangedGlobal -= Scoreboard.Prefetch;
+            Inventory.onInventoryChangedGlobal -= Scoreboard.OnInventoryChanged;
             Scoreboard.Collapse();
             Scoreboard.Shutdown();
         }
@@ -45,6 +54,32 @@ namespace CookBook
                 if (strip.GetComponent<ScoreboardStripHook>()) continue;
                 strip.gameObject.AddComponent<ScoreboardStripHook>().Strip = strip;
             }
+
+            Scoreboard.Prefetch(controller.GetComponentInParent<HUD>());
+        }
+
+        // built with the HUD and kept filled with your list, TAB only shows it
+        private void Prefetch(HUD hud)
+        {
+            if (!EnsureBuilt(hud) || _expandedStrip != null) return;
+
+            var local = LocalUserManager.GetFirstLocalUser()?.cachedMaster;
+            if (local && local != _filledMaster) Fill(local);
+        }
+
+        // pickups refresh whoever is filled, once they settle
+        private void OnInventoryChanged(Inventory inv)
+        {
+            if (_runner == null || !_filledMaster || inv != _filledMaster.inventory) return;
+            if (_refreshRoutine != null) _runner.StopCoroutine(_refreshRoutine);
+            _refreshRoutine = _runner.StartCoroutine(RefreshAfterDelay());
+        }
+
+        private IEnumerator RefreshAfterDelay()
+        {
+            yield return new WaitForSecondsRealtime(RefreshDelay);
+            _refreshRoutine = null;
+            Fill(_filledMaster);
         }
 
         internal void ToggleStrip(ScoreboardStrip strip)
@@ -58,7 +93,8 @@ namespace CookBook
         {
             var inv = strip.keyItemIcon ? strip.keyItemIcon.targetInventory : null;
             var master = inv ? inv.GetComponent<CharacterMaster>() : null;
-            if (!master || !UIBundle.EnsureLoaded() || !LoadWokPanel()) return;
+            var hud = strip.GetComponentInParent<HUD>();
+            if (!master || !EnsureBuilt(hud)) return;
 
             // the inspect panel's space goes to the list
             var container = (RectTransform)strip.transform.parent.parent;
@@ -71,23 +107,23 @@ namespace CookBook
             {
                 if (child.gameObject.activeSelf) used += LayoutUtility.GetPreferredHeight(child);
             }
-            var size = new Vector2(RoundToEven(((RectTransform)strip.transform).rect.width), RoundToEven(container.rect.height - used));
+            float height = RoundToEven(container.rect.height - used);
 
-            // rows are laid out to the strip width, rebuild if it changes
-            if (_cookbookRoot == null || size.x != _builtSize.x)
-            {
-                DestroyPanel();
-                BuildScoreboardPanel(strip, size);
-            }
-            MountScoreboardPanel(strip, size.y);
+            // pushes the strips below down, the panel sits over it
+            if (!_spacer) _spacer = CreateInternal("CookBookSpacer", strip.transform.parent, typeof(RectTransform));
+            _spacer.SetSiblingIndex(strip.transform.GetSiblingIndex() + 1);
+            _spacer.sizeDelta = new Vector2(_spacer.sizeDelta.x, height);
+            _spacer.gameObject.SetActive(true);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(container);
+
+            Show(height);
             _expandedStrip = strip;
 
             // clicked in, stays up after TAB is let go, next TAB closes it
-            var hud = strip.GetComponentInParent<HUD>();
-            if (hud) hud.shouldForceScoreboardToggle = true;
+            hud.shouldForceScoreboardToggle = true;
 
-            var craftables = RecipeViewer.Compute(master, out var snap);
-            CraftablesForUIChanged(craftables, snap);
+            // your list is usually filled already
+            if (master != _filledMaster) Fill(master);
 
             SetSoloPause(true);
         }
@@ -95,12 +131,36 @@ namespace CookBook
         internal void Collapse()
         {
             _expandedStrip = null;
-            Detach();
+            if (_cookbookRoot != null) Hide();
+            if (_spacer) _spacer.gameObject.SetActive(false);
 
             if (_inspectPanel) _inspectPanel.SetActive(true);
             _inspectPanel = null;
 
             SetSoloPause(false);
+        }
+
+        // one per HUD, a new stage builds a new one
+        private bool EnsureBuilt(HUD hud)
+        {
+            if (!hud || !hud.scoreboardPanel || !UIBundle.EnsureLoaded() || !LoadWokPanel()) return false;
+            if (_cookbookRoot != null && _cookbookRoot.transform.parent == hud.mainContainer.transform) return true;
+
+            DestroyPanel();
+            _filledMaster = null;
+            _refreshRoutine = null;
+            BuildScoreboardPanel(hud);
+            Hide();
+            return true;
+        }
+
+        private void Fill(CharacterMaster master)
+        {
+            if (!master) return;
+
+            _filledMaster = master;
+            var craftables = RecipeViewer.Compute(master, out var snap);
+            CraftablesForUIChanged(craftables, snap);
         }
 
         private static bool LoadWokPanel()
@@ -113,19 +173,18 @@ namespace CookBook
             return _wokPanel;
         }
 
-        // same build as the CHEF panel, at scoreboard units
-        private void BuildScoreboardPanel(ScoreboardStrip strip, Vector2 size)
+        // same build as the CHEF panel, outside the scoreboard so TAB never wakes the rows
+        private void BuildScoreboardPanel(HUD hud)
         {
-            if (!_panelHolder)
-            {
-                _panelHolder = new GameObject("CookBookScoreboardHolder");
-                Object.DontDestroyOnLoad(_panelHolder);
-            }
+            // live strips only exist once TAB is held, their prefab has the art
+            var controller = hud.scoreboardPanel.GetComponent<ScoreboardController>();
+            var strip = controller && controller.stripPrefab ? controller.stripPrefab.GetComponent<ScoreboardStrip>() : null;
 
-            _cookbookRoot = CreateUIObject("CookBookScoreboardPanel", typeof(RectTransform), typeof(MPEventSystemProvider), typeof(CraftUIRunner), typeof(Canvas), typeof(GraphicRaycaster), typeof(Image));
+            _cookbookRoot = CreateUIObject("CookBookScoreboardPanel", typeof(RectTransform), typeof(MPEventSystemProvider), typeof(CraftUIRunner), typeof(Canvas), typeof(GraphicRaycaster), typeof(Image), typeof(CanvasGroup), typeof(ScoreboardPanelFollow));
 
             // same backdrop as the strip above it
-            var stripBg = strip.transform.Find("LongBackground")?.GetComponent<Image>();
+            var stripBgTr = strip ? strip.transform.Find("LongBackground") : null;
+            var stripBg = stripBgTr ? stripBgTr.GetComponent<Image>() : null;
             var bg = _cookbookRoot.GetComponent<Image>();
             if (stripBg)
             {
@@ -139,11 +198,14 @@ namespace CookBook
             _runner = _cookbookRoot.GetComponent<CraftUIRunner>();
             _cookbookRoot.GetComponent<Canvas>().pixelPerfect = true;
 
-            // build mounted so canvas scale matches
+            // last in the HUD so it draws over the scoreboard, the follow places it
             RectTransform cbRT = _cookbookRoot.GetComponent<RectTransform>();
-            cbRT.SetParent(strip.transform.parent, false);
-            cbRT.sizeDelta = size;
-            _builtSize = size;
+            cbRT.SetParent(hud.mainContainer.transform, false);
+            cbRT.SetAsLastSibling();
+            cbRT.anchorMin = new Vector2(0.5f, 0.5f);
+            cbRT.anchorMax = new Vector2(0.5f, 0.5f);
+            cbRT.pivot = Vector2.zero;
+            cbRT.sizeDelta = new Vector2(UIBundleInfo.PanelWidth, UIBundleInfo.PanelHeight);
 
             // path rows size off the authored height, not the list's
             _panelHeight = UIBundleInfo.PanelHeight;
@@ -157,26 +219,63 @@ namespace CookBook
             // tapered streaks don't fit the scoreboard, row dividers stay
             view.transform.Find("BorderGroup_Tapered")?.gameObject.SetActive(false);
             view.transform.Find("SearchBarContainer/BorderGroup_Tapered")?.gameObject.SetActive(false);
+
+            // plain fill reads bare on the backdrop, use the strip's item slot
+            var slotBg = strip && strip.itemInventoryDisplay ? strip.itemInventoryDisplay.GetComponent<Image>() : null;
+            var searchBg = view.SearchInput.GetComponent<Image>();
+            if (slotBg && searchBg)
+            {
+                searchBg.sprite = slotBg.sprite;
+                searchBg.type = slotBg.type;
+                searchBg.color = slotBg.color;
+            }
+
+            // inside the backdrop's border, same padding as the strip's contents
+            var stripPad = stripBgTr ? stripBgTr.GetComponent<HorizontalLayoutGroup>() : null;
+            if (stripPad)
+            {
+                var panelRT = (RectTransform)view.transform;
+                panelRT.offsetMin = new Vector2(stripPad.padding.left, panelRT.offsetMin.y);
+                panelRT.offsetMax = new Vector2(-stripPad.padding.right, panelRT.offsetMax.y);
+            }
+
+            // same layer the strip buttons answer to
+            _vanillaTopLayer = hud.scoreboardPanel.GetComponent<UILayerKey>();
+            BindTopLayer(_vanillaTopLayer, true);
         }
 
-        // under the strip, at the space left
-        private void MountScoreboardPanel(ScoreboardStrip strip, float height)
+        // over the spacer, at the space left
+        private void Show(float height)
         {
-            RectTransform cbRT = _cookbookRoot.GetComponent<RectTransform>();
-            cbRT.SetParent(strip.transform.parent, false);
-            cbRT.SetSiblingIndex(strip.transform.GetSiblingIndex() + 1);
-            cbRT.sizeDelta = new Vector2(cbRT.sizeDelta.x, height);
+            var follow = _cookbookRoot.GetComponent<ScoreboardPanelFollow>();
+            follow.Target = _spacer;
+            follow.Sync();
 
             var listRT = (RectTransform)_recipeListContent.GetComponentInParent<ScrollRect>().transform;
             listRT.sizeDelta = new Vector2(listRT.sizeDelta.x, height + listRT.anchoredPosition.y - ListBottomMargin);
 
-            var vanillaProvider = strip.GetComponentInParent<MPEventSystemProvider>();
+            var vanillaProvider = _cookbookRoot.transform.parent.GetComponentInParent<MPEventSystemProvider>();
             _eventSystemProvider.eventSystem = vanillaProvider ? vanillaProvider.resolvedEventSystem : null;
 
-            // same layer the strip buttons answer to
-            _vanillaTopLayer = strip.GetComponent<HGButton>()?.requiredTopLayer;
-            BindTopLayer(_vanillaTopLayer, true);
-            _cookbookRoot.GetComponent<Canvas>().enabled = true;
+            SetShown(true);
+        }
+
+        private void Hide()
+        {
+            ResetPanelState();
+            SetShown(false);
+        }
+
+        // the group also hides the vanilla button clones, they carry canvases of their own
+        private void SetShown(bool shown)
+        {
+            var group = _cookbookRoot.GetComponent<CanvasGroup>();
+            group.alpha = shown ? 1f : 0f;
+            group.interactable = shown;
+            group.blocksRaycasts = shown;
+            _cookbookRoot.GetComponent<Canvas>().enabled = shown;
+            _cookbookRoot.GetComponent<GraphicRaycaster>().enabled = shown;
+            foreach (var ev in _cookbookRoot.GetComponents<HGGamepadInputEvent>()) ev.enabled = shown;
         }
 
         // solo only, a shared run keeps going

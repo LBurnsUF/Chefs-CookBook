@@ -57,7 +57,13 @@ namespace CookBook
             if (view.DepthText != null) view.DepthText.text = $" Min Depth: {entry.MinDepth}";
 
             // ---------------- MetaData: Paths ----------------
-            if (view.PathsText != null) view.PathsText.text = $"Paths: {entry.Chains.Count}";
+            if (view.PathsText != null)
+            {
+                // the scoreboard swaps paths for how close you are
+                bool progress = entry.ProgressRecipe != null;
+                view.PathsText.text = progress ? $"Owned: {entry.Owned}/{entry.Needed}" : $"Paths: {entry.Chains.Count}";
+                view.PathsText.gameObject.SetActive(progress || !runtime.Panel._cutDown);
+            }
 
             // ---------------- ItemIcon ----------------
             if (TryGetIcon(entry.ResultIndex, out var iconRef, out var iconSprite))
@@ -71,6 +77,15 @@ namespace CookBook
                 view.ResultSlot.IconLoader.Clear();
                 view.ResultSlot.Icon.enabled = true;
                 view.ResultSlot.Icon.color = new Color(1f, 1f, 1f, 0.1f);
+            }
+
+            // ---------------- Progress ----------------
+            // further from done reads dimmer
+            if (entry.ProgressRecipe != null)
+            {
+                float alpha = entry.Progress == RecipeProgress.Partial ? 0.7f : 0.45f;
+                if (view.ItemLabel != null) view.ItemLabel.color = view.ItemLabel.color.AlphaMultiplied(alpha);
+                if (entry.Progress == RecipeProgress.None) view.ResultSlot.Icon.color = new Color(0.5f, 0.5f, 0.5f, 1f);
             }
 
             // ---------------- Stack Text ----------------
